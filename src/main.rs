@@ -1,3 +1,7 @@
+use infinite_package_manager::utils::args::Args;
+use clap::Parser;
+
 fn main() {
-    println!("Hello, world!");
+    let args = Args::parse();
+    println!("{:#?}", args);
 }
