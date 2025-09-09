@@ -1,5 +1,2 @@
-pub mod apt;
-pub mod dpkg;
-pub mod flatpak;
-pub mod ipak;
-pub mod snap;
+pub mod pkg;
+pub mod repo;
