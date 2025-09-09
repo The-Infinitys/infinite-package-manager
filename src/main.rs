@@ -1,9 +1,11 @@
 use clap::Parser;
 use env_logger;
-use infinite_package_manager::utils::args::Args;
+use infinite_package_manager::utils::args::{Args, Subcommands};
 use log;
+use infinite_package_manager::Error;
+use infinite_package_manager::command;
 
-fn main() {
+fn main()->Result<(), Error> {
     let args = Args::parse();
 
     let mut log_builder = env_logger::Builder::new();
@@ -19,9 +21,11 @@ fn main() {
     }
 
     log_builder.init();
-
-    log::info!("Application started.");
-    log::debug!("Parsed arguments: {:#?}", args);
-
-    println!("{:#?}", args);
+    match &args.command {
+    	Subcommands::License => command::license(),
+        Subcommands::Manual => command::manual(),
+        Subcommands::Pkg => command::pkg(),
+        Subcommands::Repo => command::repo(),
+    }?;
+    Ok(())
 }
