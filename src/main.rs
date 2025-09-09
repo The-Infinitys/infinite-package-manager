@@ -1,7 +1,5 @@
 use clap::Parser;
-use env_logger;
 use infinite_package_manager::utils::args::{Args, Subcommands};
-use log;
 use infinite_package_manager::Error;
 use infinite_package_manager::command;
 
