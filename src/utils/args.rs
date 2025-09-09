@@ -1,6 +1,5 @@
 /// src/utils/args.rs
 /// this file is used for configure command-line interfaces
-
 use clap::Parser;
 
 #[derive(Parser, Debug)]
@@ -10,7 +9,7 @@ pub struct Args {
     pub verbose: u8,
     #[arg(short, long, global = true, help = "Suppress all output")]
     pub quiet: bool,
-	#[command(subcommand)]
+    #[command(subcommand)]
     pub command: Subcommands,
 }
 

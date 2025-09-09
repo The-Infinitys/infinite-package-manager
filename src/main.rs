@@ -1,6 +1,6 @@
-use infinite_package_manager::utils::args::Args;
 use clap::Parser;
 use env_logger;
+use infinite_package_manager::utils::args::Args;
 use log;
 
 fn main() {
