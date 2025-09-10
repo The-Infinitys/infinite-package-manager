@@ -1,12 +1,12 @@
 /// src/modules/compats/repo.rs
 /// レポジトリ関係の互換レイヤー
-pub mod apt;
+mod apt;
 
 /// Represents the type of a package repository.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RepoType {
+pub enum RepoInfo {
     /// Advanced Package Tool (APT) repository, commonly used in Debian-based systems.
-    Apt,
+    Apt(apt::RepoInfo),
     // Add other repository types here as needed (e.g., Yum, Zypper, etc.)
 }
 
@@ -17,33 +17,14 @@ pub struct Repository {
     pub name: String,
     /// The base URL of the repository.
     pub url: String,
-    /// A list of components or sections within the repository (e.g., "main", "universe").
-    pub components: Vec<String>,
-    /// A list of architectures supported by the repository (e.g., "amd64", "i386").
-    pub architectures: Vec<String>,
-    /// Optional: The GPG key ID or fingerprint used to sign packages from this repository.
-    pub key: Option<String>,
     /// The type of the repository.
-    pub repo_type: RepoType,
+    pub info: RepoInfo,
 }
 
 impl Repository {
-    /// Creates a new `Repository` instance.
-    pub fn new(
-        name: String,
-        url: String,
-        components: Vec<String>,
-        architectures: Vec<String>,
-        key: Option<String>,
-        repo_type: RepoType,
-    ) -> Self {
-        Repository {
-            name,
-            url,
-            components,
-            architectures,
-            key,
-            repo_type,
-        }
+    pub fn new(name: &str, url: &str, info: RepoInfo) -> Self {
+        let name = name.to_string();
+        let url = url.to_string();
+        Self { name, url, info }
     }
 }
