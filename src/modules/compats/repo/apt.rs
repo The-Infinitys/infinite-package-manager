@@ -1,6 +1,7 @@
 /// src/modules/compats/repo/apt.rs
 /// aptレポジトリの互換レイヤー
 use crate::Error;
+use std::fs;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RepoInfo {
@@ -9,7 +10,7 @@ pub struct RepoInfo {
     pub uris: Vec<String>,
     pub suites: Vec<String>,
     pub components: Vec<String>,
-    pub signed_by: Option<String>,
+    pub signed_by: Option<Vec<u8>>,
 }
 
 pub fn parse_repo_info(content: &str) -> Result<Vec<RepoInfo>, Error> {
@@ -51,17 +52,6 @@ pub fn parse_repo_info(content: &str) -> Result<Vec<RepoInfo>, Error> {
                         "Components" => repo
                             .components
                             .extend(trimmed_line.split_whitespace().map(|s| s.to_string())),
-                        "Signed-By" => {
-                            if let Some(signed_by_val) = &mut repo.signed_by {
-                                signed_by_val.push_str(" ");
-                                signed_by_val.push_str(trimmed_line);
-                            } else {
-                                return Err(Error::ParseError(format!(
-                                    "Continuation line for Signed-By without initial value: {}",
-                                    line
-                                )));
-                            }
-                        }
                         "Architectures" => repo
                             .architectures
                             .extend(trimmed_line.split_whitespace().map(|s| s.to_string())),
@@ -108,7 +98,11 @@ pub fn parse_repo_info(content: &str) -> Result<Vec<RepoInfo>, Error> {
                     "Components" => {
                         repo.components = value.split_whitespace().map(|s| s.to_string()).collect()
                     }
-                    "Signed-By" => repo.signed_by = Some(value.to_string()),
+                    "Signed-By" => {
+                        let path = value;
+                        let data = fs::read(path).map_err(|e| Error::Io(e))?;
+                        repo.signed_by = Some(data);
+                    }
                     "Architectures" => {
                         repo.architectures =
                             value.split_whitespace().map(|s| s.to_string()).collect()
@@ -158,10 +152,10 @@ mod tests {
             repo1.components,
             vec!["main", "universe", "restricted", "multiverse"]
         );
-        assert_eq!(
-            repo1.signed_by,
-            Some("/usr/share/keyrings/ubuntu-archive-keyring.gpg".to_string())
-        );
+        // For signed_by, we now compare the content of the file
+        let expected_signed_by_path = "/usr/share/keyrings/ubuntu-archive-keyring.gpg";
+        let expected_signed_by_data = fs::read(expected_signed_by_path).unwrap();
+        assert_eq!(repo1.signed_by, Some(expected_signed_by_data));
         assert!(repo1.architectures.is_empty()); // Architectures not specified in this block
 
         // Test second repo
@@ -173,10 +167,10 @@ mod tests {
             repo2.components,
             vec!["main", "universe", "restricted", "multiverse"]
         );
-        assert_eq!(
-            repo2.signed_by,
-            Some("/usr/share/keyrings/ubuntu-archive-keyring.gpg".to_string())
-        );
+        // For signed_by, we now compare the content of the file
+        let expected_signed_by_path = "/usr/share/keyrings/ubuntu-archive-keyring.gpg";
+        let expected_signed_by_data = fs::read(expected_signed_by_path).unwrap();
+        assert_eq!(repo2.signed_by, Some(expected_signed_by_data));
         assert!(repo2.architectures.is_empty()); // Architectures not specified in this block
     }
 }
