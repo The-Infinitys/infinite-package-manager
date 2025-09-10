@@ -1,9 +1,9 @@
 use clap::Parser;
-use infinite_package_manager::utils::args::{Args, Subcommands};
 use infinite_package_manager::Error;
 use infinite_package_manager::command;
+use infinite_package_manager::utils::args::{Args, Subcommands};
 
-fn main()->Result<(), Error> {
+fn main() -> Result<(), Error> {
     let args = Args::parse();
 
     let mut log_builder = env_logger::Builder::new();
@@ -20,7 +20,7 @@ fn main()->Result<(), Error> {
 
     log_builder.init();
     match &args.command {
-    	Subcommands::License => command::license(),
+        Subcommands::License => command::license(),
         Subcommands::Manual => command::manual(),
         Subcommands::Pkg => command::pkg(),
         Subcommands::Repo => command::repo(),

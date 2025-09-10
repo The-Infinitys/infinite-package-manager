@@ -1,2 +1,2 @@
-pub mod compats;
 pub mod command;
+pub mod compats;

@@ -1,5 +1,5 @@
 /// src/modules/compats/repo.rs
-/// レポジトリ関係の五感レイヤー
+/// レポジトリ関係の互換レイヤー
 pub mod apt;
 
 /// Represents the type of a package repository.
