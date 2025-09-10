@@ -63,7 +63,7 @@ BRANCH_NAME=$(echo "$FEATURE_DESCRIPTION" |
     sed 's/-$//')
 
 # Extract 2-3 meaningful words
-WORDS=$(echo "$BRANCH_NAME" | tr '-' '\n' | grep -v '^ | head -3 | tr '\n' '-' | sed 's/-$//')
+WORDS=$(echo "$BRANCH_NAME" | tr '-' '\n' | grep -v '^' | head -3 | tr '\n' '-' | sed 's/-$//')
 
 # Final branch name
 BRANCH_NAME="features/${FEATURE_NUM}-${WORDS}"
