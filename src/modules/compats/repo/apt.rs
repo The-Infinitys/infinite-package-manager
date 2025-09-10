@@ -153,7 +153,8 @@ mod tests {
             vec!["main", "universe", "restricted", "multiverse"]
         );
         // For signed_by, we now compare the content of the file
-        let expected_signed_by_path = "/usr/share/keyrings/ubuntu-archive-keyring.gpg";
+        let manifest_dir = env!("CARGO_MANIFEST_DIR");
+        let expected_signed_by_path = format!("{}/src/modules/compats/repo/tests/ubuntu-archive-keyring.gpg", manifest_dir);
         let expected_signed_by_data = fs::read(expected_signed_by_path).unwrap();
         assert_eq!(repo1.signed_by, Some(expected_signed_by_data));
         assert!(repo1.architectures.is_empty()); // Architectures not specified in this block
