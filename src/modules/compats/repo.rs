@@ -1,6 +1,6 @@
 /// src/modules/compats/repo.rs
 /// レポジトリ関係の互換レイヤー
-mod apt;
+pub mod apt;
 
 /// Represents the type of a package repository.
 #[derive(Debug, Clone, PartialEq, Eq)]
