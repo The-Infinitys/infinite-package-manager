@@ -138,18 +138,7 @@ pub fn parse_repo_info(content: &str) -> Result<Vec<RepoInfo>, Error> {
 mod tests {
     use super::*;
 
-    const TEST_SOURCES_CONTENT: &str = r#"Types: deb deb-src
-URIs: https://archive.ubuntu.com/ubuntu
-Suites: plucky plucky-updates plucky-backports
-Components: main universe restricted multiverse
-Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
-
-Types: deb deb-src
-URIs: https://security.ubuntu.com/ubuntu/
-Suites: plucky-security
-Components: main universe restricted multiverse
-Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
-"#;
+    const TEST_SOURCES_CONTENT: &str = include_str!("tests/ubuntu.sources");
 
     #[test]
     fn test_parse_repo_info() {
