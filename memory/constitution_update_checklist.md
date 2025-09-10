@@ -1,85 +1,93 @@
-# Constitution Update Checklist
+# **開発原則更新チェックリスト**
 
-When amending the constitution (`/memory/constitution.md`), ensure all dependent documents are updated to maintain consistency.
+開発原則（`/memory/constitution.md`）を更新する際は、一貫性を保つため、関連するすべてのドキュメントが更新されているかを確認してください。
 
-## Templates to Update
+## 更新すべきテンプレート
 
-### When adding/modifying ANY article:
-- [ ] `/templates/plan-template.md` - Update Constitution Check section
-- [ ] `/templates/spec-template.md` - Update if requirements/scope affected
-- [ ] `/templates/tasks-template.md` - Update if new task types needed
-- [ ] `/.claude/commands/plan.md` - Update if planning process changes
-- [ ] `/.claude/commands/tasks.md` - Update if task generation affected
-- [ ] `/CLAUDE.md` - Update runtime development guidelines
+### **いずれかの項目を追加・修正する場合：**
 
-### Article-specific updates:
+- [ ] `/templates/plan-template.md` - 「原則チェック」セクションを更新
+- [ ] `/templates/spec-template.md` - 要件やスコープに影響がある場合に更新
+- [ ] `/templates/tasks-template.md` - 新しいタスクタイプが必要な場合に更新
+- [ ] `/.claude/commands/plan.md` - 計画策定プロセスが変更された場合に更新
+- [ ] `/.claude/commands/tasks.md` - タスク生成に影響がある場合に更新
+- [ ] `/CLAUDE.md` - ランタイム開発ガイドラインを更新
 
-#### Article I (Library-First):
-- [ ] Ensure templates emphasize library creation
-- [ ] Update CLI command examples
-- [ ] Add llms.txt documentation requirements
+### **項目ごとの更新：**
 
-#### Article II (CLI Interface):
-- [ ] Update CLI flag requirements in templates
-- [ ] Add text I/O protocol reminders
+#### **第 1 条（ライブラリファースト）：**
 
-#### Article III (Test-First):
-- [ ] Update test order in all templates
-- [ ] Emphasize TDD requirements
-- [ ] Add test approval gates
+- [ ] テンプレートがライブラリ作成を重視しているか確認
+- [ ] CLI コマンドの例を更新
+- [ ] `llms.txt`のドキュメント要件を追加
 
-#### Article IV (Integration Testing):
-- [ ] List integration test triggers
-- [ ] Update test type priorities
-- [ ] Add real dependency requirements
+#### **第 2 条（CLI インターフェース）：**
 
-#### Article V (Observability):
-- [ ] Add logging requirements to templates
-- [ ] Include multi-tier log streaming
-- [ ] Update performance monitoring sections
+- [ ] テンプレート内の CLI フラグ要件を更新
+- [ ] テキスト I/O プロトコルの注意喚起を追加
 
-#### Article VI (Versioning):
-- [ ] Add version increment reminders
-- [ ] Include breaking change procedures
-- [ ] Update migration requirements
+#### **第 3 条（テストファースト）：**
 
-#### Article VII (Simplicity):
-- [ ] Update project count limits
-- [ ] Add pattern prohibition examples
-- [ ] Include YAGNI reminders
+- [ ] すべてのテンプレートでテストの順序を更新
+- [ ] **TDD**（テスト駆動開発）の要件を強調
+- [ ] テストの承認ゲートを追加
 
-## Validation Steps
+#### **第 4 条（結合テスト）：**
 
-1. **Before committing constitution changes:**
-   - [ ] All templates reference new requirements
-   - [ ] Examples updated to match new rules
-   - [ ] No contradictions between documents
+- [ ] 結合テストのトリガーをリストアップ
+- [ ] テストタイプの優先順位を更新
+- [ ] 実際の依存関係の要件を追加
 
-2. **After updating templates:**
-   - [ ] Run through a sample implementation plan
-   - [ ] Verify all constitution requirements addressed
-   - [ ] Check that templates are self-contained (readable without constitution)
+#### **第 5 条（可観測性）：**
 
-3. **Version tracking:**
-   - [ ] Update constitution version number
-   - [ ] Note version in template footers
-   - [ ] Add amendment to constitution history
+- [ ] テンプレートにロギング要件を追加
+- [ ] 多層ロギングストリーミングを含める
+- [ ] パフォーマンス監視セクションを更新
 
-## Common Misses
+#### **第 6 条（バージョン管理）：**
 
-Watch for these often-forgotten updates:
-- Command documentation (`/commands/*.md`)
-- Checklist items in templates
-- Example code/commands
-- Domain-specific variations (web vs mobile vs CLI)
-- Cross-references between documents
+- [ ] バージョン番号の増分に関する注意喚起を追加
+- [ ] 破壊的変更の手順を含める
+- [ ] マイグレーション要件を更新
 
-## Template Sync Status
+#### **第 7 条（シンプルさ）：**
 
-Last sync check: 2025-07-16
-- Constitution version: 2.1.1
-- Templates aligned: ❌ (missing versioning, observability details)
+- [ ] プロジェクト数の上限を更新
+- [ ] パターンの禁止例を追加
+- [ ] **YAGNI**（You Ain't Gonna Need It）の注意喚起を含める
 
----
+## 検証ステップ
 
-*This checklist ensures the constitution's principles are consistently applied across all project documentation.*
+1. **開発原則をコミットする前に：**
+
+   - [ ] すべてのテンプレートが新しい要件を参照しているか
+   - [ ] 例が新しいルールに合わせて更新されているか
+   - [ ] ドキュメント間に矛盾がないか
+
+2. **テンプレート更新後：**
+
+   - [ ] サンプル実装計画を通して実行してみる
+   - [ ] 開発原則の要件がすべて満たされているか確認
+   - [ ] テンプレートがそれ自体で完結しているか（原則ドキュメントなしで読めるか）確認
+
+3. **バージョン追跡：**
+   - [ ] 開発原則のバージョン番号を更新
+   - [ ] テンプレートのフッターにバージョンを記載
+   - [ ] 開発原則の履歴に更新内容を追加
+
+## よく見落とされる項目
+
+これらの見落としがちな更新箇所に注意してください：
+
+- コマンドのドキュメント（`/commands/*.md`）
+- テンプレート内のチェックリスト項目
+- サンプルコード/コマンド
+- ドメイン固有のバリエーション（ウェブ、モバイル、CLI など）
+- ドキュメント間の相互参照
+
+## テンプレート同期状況
+
+最終同期チェック：2025-07-16
+
+- 開発原則バージョン：2.1.1
+- テンプレートの整合性：❌（バージョン管理と可観測性の詳細が不足）

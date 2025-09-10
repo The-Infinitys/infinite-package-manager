@@ -15,9 +15,9 @@ get_current_branch() {
 # Returns 0 if valid, 1 if not
 check_feature_branch() {
     local branch="$1"
-    if [[ ! "$branch" =~ ^[0-9]{3}- ]]; then
+    if [[ ! "$branch" =~ ^(features\/)?[0-9]{3}- ]]; then
         echo "ERROR: Not on a feature branch. Current branch: $branch"
-        echo "Feature branches should be named like: 001-feature-name"
+        echo "Feature branches should be named like: 001-feature-name or features/001-feature-name"
         return 1
     fi
     return 0
@@ -27,7 +27,11 @@ check_feature_branch() {
 get_feature_dir() {
     local repo_root="$1"
     local branch="$2"
-    echo "$repo_root/specs/$branch"
+    local feature_name="$branch"
+    if [[ "$branch" == features/* ]]; then
+        feature_name="${branch#features/}"
+    fi
+    echo "$repo_root/specs/$feature_name"
 }
 
 # Get all standard paths for a feature
