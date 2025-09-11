@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 clap = { version = "4.5.47", features = ["derive", "env"] }
 env_logger = "0.11.8"
+ipak = { git = "https://github.com/The-Infinitys/ipak", version = "1.0.0" }
 log = "0.4.28"
 thiserror = "2.0.16"
 
