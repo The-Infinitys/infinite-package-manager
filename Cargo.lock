@@ -599,6 +599,7 @@ dependencies = [
  "env_logger",
  "ipak",
  "log",
+ "regex",
  "thiserror 2.0.16",
 ]
 
