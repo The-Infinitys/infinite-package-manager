@@ -1,7 +1,7 @@
 /// src/modules/compats/repo/apt.rs
 /// aptレポジトリの互換レイヤー
 use crate::Error;
-use std::fs;
+use std::{fs, path::PathBuf};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RepoInfo {
@@ -10,7 +10,12 @@ pub struct RepoInfo {
     pub uris: Vec<String>,
     pub suites: Vec<String>,
     pub components: Vec<String>,
-    pub signed_by: Option<Vec<u8>>,
+    pub signed_by: Option<Signature>,
+}
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Signature {
+    pub path: Option<PathBuf>,
+    pub data: Vec<u8>,
 }
 
 pub fn parse_repo_info(content: &str) -> Result<Vec<RepoInfo>, Error> {
@@ -100,8 +105,11 @@ pub fn parse_repo_info(content: &str) -> Result<Vec<RepoInfo>, Error> {
                     }
                     "Signed-By" => {
                         let path = value;
-                        let data = fs::read(path).map_err(|e| Error::Io(e))?;
-                        repo.signed_by = Some(data);
+                        let data = fs::read(path).unwrap_or_default();
+                        repo.signed_by = Some(Signature {
+                            path: Some(PathBuf::from(path)),
+                            data,
+                        });
                     }
                     "Architectures" => {
                         repo.architectures =
@@ -131,6 +139,7 @@ pub fn parse_repo_info(content: &str) -> Result<Vec<RepoInfo>, Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
 
     const TEST_SOURCES_CONTENT: &str = include_str!("tests/ubuntu.sources");
 
@@ -152,11 +161,13 @@ mod tests {
             repo1.components,
             vec!["main", "universe", "restricted", "multiverse"]
         );
-        // For signed_by, we now compare the content of the file
-        let manifest_dir = env!("CARGO_MANIFEST_DIR");
-        let expected_signed_by_path = format!("{}/src/modules/compats/repo/tests/ubuntu-archive-keyring.gpg", manifest_dir);
-        let expected_signed_by_data = fs::read(expected_signed_by_path).unwrap();
-        assert_eq!(repo1.signed_by, Some(expected_signed_by_data));
+        // For signed_by, we now compare the path of the file
+        let expected_signed_by_path =
+            PathBuf::from("/usr/share/keyrings/ubuntu-archive-keyring.gpg");
+        assert_eq!(
+            repo1.signed_by.as_ref().unwrap().path.as_ref().unwrap(),
+            &expected_signed_by_path
+        );
         assert!(repo1.architectures.is_empty()); // Architectures not specified in this block
 
         // Test second repo
@@ -168,10 +179,13 @@ mod tests {
             repo2.components,
             vec!["main", "universe", "restricted", "multiverse"]
         );
-        // For signed_by, we now compare the content of the file
-        let expected_signed_by_path = "/usr/share/keyrings/ubuntu-archive-keyring.gpg";
-        let expected_signed_by_data = fs::read(expected_signed_by_path).unwrap();
-        assert_eq!(repo2.signed_by, Some(expected_signed_by_data));
+        // For signed_by, we now compare the path of the file
+        let expected_signed_by_path =
+            PathBuf::from("/usr/share/keyrings/ubuntu-archive-keyring.gpg");
+        assert_eq!(
+            repo2.signed_by.as_ref().unwrap().path.as_ref().unwrap(),
+            &expected_signed_by_path
+        );
         assert!(repo2.architectures.is_empty()); // Architectures not specified in this block
     }
 }
