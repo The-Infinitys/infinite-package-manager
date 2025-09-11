@@ -1,9 +1,7 @@
 /// src/modules/compats/pkg.rs
 /// パッケージ関連の互換レイヤー
 pub mod dpkg;
-pub mod flatpak;
 pub mod ipak;
-pub mod snap;
 use crate::version::{Version, VersionRange};
 pub enum PackageType {
     Dpkg,
