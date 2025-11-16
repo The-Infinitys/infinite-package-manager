@@ -1,0 +1,11 @@
+[package]
+name = "infinite-package-manager"
+version = "0.1.0"
+edition = "2024"
+build = "build.rs"
+
+[[bin]]
+name = "ipm"
+path = "src/main.rs"
+
+[dependencies]
