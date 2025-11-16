@@ -23,7 +23,7 @@ pub enum SubCommands {
 
 impl Cli {
     pub fn execute(&self)->Result<(),UpmError>{
-        return Ok(())
+        Ok(())
     }
 
 }
