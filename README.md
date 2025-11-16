@@ -1,1 +1,1 @@
-# infinite-package-manager
+# Union Package Manager

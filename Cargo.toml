@@ -1,11 +1,16 @@
 [package]
-name = "infinite-package-manager"
+name = "union-package-manager"
 version = "0.1.0"
 edition = "2024"
 build = "build.rs"
 
 [[bin]]
-name = "ipm"
+name = "upm"
 path = "src/main.rs"
 
 [dependencies]
+clap = "4.5.51"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.145"
+serde_toml = "0.0.1"
+serde_yaml = "0.9.34"
