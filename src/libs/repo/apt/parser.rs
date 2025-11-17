@@ -20,8 +20,8 @@ pub fn sources(path: impl AsRef<Path>) -> Result<Vec<AptRepositoryEntry>, UpmErr
             let key = entry.key();
             let value = entry.value();
 
-            match key {
-                Some(key) => match key.as_str() {
+            if let Some(key) = key {
+                match key.as_str() {
                     "Types" => {
                         // Types の抽出とパース
                         repo_entry.repo_type = value
@@ -51,8 +51,7 @@ pub fn sources(path: impl AsRef<Path>) -> Result<Vec<AptRepositoryEntry>, UpmErr
                     _ => {
                         repo_entry.options.insert(key, value);
                     }
-                },
-                None => {}
+                }
             }
         }
         // 3. 完全に解析されたエントリを結果に追加
@@ -93,11 +92,7 @@ mod tests {
 
         // Type が正しくパースされていること
         assert_eq!(first_entry.repo_type.len(), 1);
-        assert!(
-            first_entry
-                .repo_type
-                .contains(&AptRepositoryType::Deb)
-        );
+        assert!(first_entry.repo_type.contains(&AptRepositoryType::Deb));
 
         // URIs が正しく読み込まれていること
         assert_eq!(first_entry.uris, "http://archive.ubuntu.com/ubuntu/");

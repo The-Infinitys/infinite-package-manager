@@ -36,6 +36,12 @@ pub struct AptRepositoryEntry {
     pub signed_by: AptRepositoryKeyInfo,
     pub options: HashMap<String, String>,
 }
+impl Default for AptRepositoryEntry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AptRepositoryEntry {
     pub fn new() -> Self {
         let repo_type = vec![];

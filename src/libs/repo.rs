@@ -1,5 +1,5 @@
 pub mod apt;
 
-pub enum RepositoryEntry{
-    Apt(apt::AptRepositoryEntry)
+pub enum RepositoryEntry {
+    Apt(apt::AptRepositoryEntry),
 }
