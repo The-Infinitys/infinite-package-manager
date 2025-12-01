@@ -1,5 +1,6 @@
 use clap::{Args, Parser, Subcommand};
 
+use crate::libs::repo::apt::AptRepositoryEntry;
 use crate::modules::error::UpmError;
 
 #[derive(Debug, Parser)]
@@ -86,7 +87,28 @@ impl Cli {
     pub fn execute(&self) -> Result<(), UpmError> {
         match &self.subcommand {
             SubCommands::Repo(repo_args) => match &repo_args.command {
-                RepoCommands::List => Ok(()),
+                RepoCommands::List => {
+                    println!("Listing configured repositories:");
+                    let entries = AptRepositoryEntry::load_all()?;
+                    if entries.is_empty() {
+                        println!("  No APT repositories found.");
+                    } else {
+                        for (i, entry) in entries.iter().enumerate() {
+                            println!("  Entry {}:", i);
+                            println!("    Types: {:?}", entry.repo_type);
+                            println!("    URIs: {}", entry.uris);
+                            println!("    Suites: {:?}", entry.suites);
+                            println!("    Components: {:?}", entry.components);
+                            println!("    Enabled: {}", entry.enabled);
+                            // オプションが存在する場合のみ表示
+                            if !entry.options.is_empty() {
+                                println!("    Options: {:?}", entry.options);
+                            }
+                            println!(); // エントリ間の区切り
+                        }
+                    }
+                    Ok(())
+                }
                 RepoCommands::Add {
                     name,
                     distro,
