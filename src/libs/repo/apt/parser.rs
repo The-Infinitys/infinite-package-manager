@@ -2,7 +2,52 @@ use super::AptRepositoryEntry;
 use super::AptRepositoryType;
 use crate::modules::error::UpmError;
 use deb822_lossless::Deb822;
+use std::fs;
+use std::io::{self, BufRead};
 use std::path::Path;
+/// sources.list形式のファイルからリポジトリエントリを解析します。
+pub fn list(path: impl AsRef<Path>) -> Result<Vec<AptRepositoryEntry>, UpmError> {
+    let file = fs::File::open(path)?;
+    let reader = io::BufReader::new(file);
+    let mut repo_entries: Vec<AptRepositoryEntry> = vec![];
+
+    for line in reader.lines() {
+        let line = line?;
+        let trimmed_line = match line.split_once("#") {
+            Some((line, _comment)) => line,
+            None => line.as_str(),
+        }
+        .trim();
+        if trimmed_line.len() < 4 {
+            continue;
+        }
+        let entries: Vec<&str> = trimmed_line.split_ascii_whitespace().collect();
+        println!("{}", entries.len());
+        let mut repo_entry = AptRepositoryEntry::new();
+        for (i, entry) in entries.into_iter().enumerate() {
+            match i {
+                0 => {
+                    let repo_type =
+                        AptRepositoryType::try_from(entry).map_err(|e| UpmError::ParseError(e))?;
+                    repo_entry.repo_type.push(repo_type);
+                }
+                1 => {
+                    repo_entry.uris = entry.to_string();
+                }
+                2 => {
+                    repo_entry.suites.push(entry.to_string());
+                }
+                _ => {
+                    repo_entry.components.push(entry.to_string());
+                }
+            }
+        }
+        repo_entry.enabled = true;
+        repo_entries.push(repo_entry);
+    }
+
+    Ok(repo_entries)
+}
 
 pub fn sources(path: impl AsRef<Path>) -> Result<Vec<AptRepositoryEntry>, UpmError> {
     let deb_info = Deb822::from_file(&path)?.paragraphs();
@@ -45,13 +90,14 @@ pub fn sources(path: impl AsRef<Path>) -> Result<Vec<AptRepositoryEntry>, UpmErr
                     }
                     // TODO: Signed-By や Options の処理もここに追加する
                     _ => {
-                        repo_entry.options.insert(key, value);
+                        repo_entry
+                            .options
+                            .insert(key.to_string(), value.to_string());
                     }
                 }
             }
         }
-        // 3. 完全に解析されたエントリを結果に追加
-        // URIsが設定されていないエントリは無視するなどのエラーチェックも可能
+        // URIsが設定されているエントリのみを追加
         if !repo_entry.uris.is_empty() {
             repo_entries.push(repo_entry);
         }
@@ -59,9 +105,32 @@ pub fn sources(path: impl AsRef<Path>) -> Result<Vec<AptRepositoryEntry>, UpmErr
 
     Ok(repo_entries)
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    // list 形式のテスト用関数
+    #[test]
+    fn test_read_sources_list() -> Result<(), UpmError> {
+        let manifest_dir = env!("CARGO_MANIFEST_DIR");
+        let test_file_path = format!("{}/tests/apt/debian.list", manifest_dir);
+        println!("Testing file path: {}", test_file_path);
+        let entries = list(test_file_path)?;
+        assert!(
+            entries.len() >= 4,
+            "Expected at least four repository entries, but found {}.",
+            entries.len()
+        );
+        let first_entry = &entries[0];
+        println!("{:#?}", first_entry);
+        assert_eq!(first_entry.repo_type.len(), 1);
+        assert!(first_entry.repo_type.contains(&AptRepositoryType::Deb));
+        assert_eq!(first_entry.uris, "http://deb.debian.org/debian".to_string());
+        assert!(first_entry.suites.contains(&"bookworm".to_string()));
+        assert_eq!(first_entry.components.len(), 2);
+        assert!(first_entry.enabled);
+        Ok(())
+    }
     #[test]
     fn test_read_ubuntu_sources() -> Result<(), UpmError> {
         // 1. **ファイルのパスを作成**

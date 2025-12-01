@@ -1,0 +1,6 @@
+# TYPE URI                       SUITE    COMPONENTS...
+deb http://deb.debian.org/debian bookworm main non-free-firmware # Hello, World
+deb http://deb.debian.org/debian bookworm-updates main non-free-firmware # Hello, World
+deb-src http://deb.debian.org/debian bookworm main non-free-firmware # Hello, World
+deb-src http://deb.debian.org/debian bookworm-updates main non-free-firmware # Hello, World
+

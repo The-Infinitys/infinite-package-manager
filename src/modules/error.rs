@@ -6,4 +6,8 @@ pub enum UpmError {
     Deb822(#[from] deb822_lossless::Error),
     #[error("{0}")]
     Other(String),
+    #[error("Parse Error: {0}")]
+    ParseError(String),
+    #[error("Parse Error: {0} is invalid extension for parse")]
+    ParseExtensionError(String),
 }

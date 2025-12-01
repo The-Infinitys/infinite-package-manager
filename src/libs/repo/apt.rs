@@ -6,7 +6,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::modules::error::UpmError;
+use crate::{
+    libs::repo::apt::parser::{list, sources},
+    modules::error::UpmError,
+};
 
 #[derive(Debug, PartialEq, Eq, Clone, Default)]
 pub enum AptRepositoryType {
@@ -67,6 +70,18 @@ impl AptRepositoryEntry {
         }
     }
     pub fn load(path: impl AsRef<Path>) -> Result<Vec<Self>, UpmError> {
-        parser::sources(path)
+        let path = path.as_ref();
+        let ext = path.extension();
+        match ext {
+            Some(ext) => {
+                let ext = ext.to_string_lossy();
+                match ext.as_ref() {
+                    "sources" => sources(path),
+                    "list" => list(path),
+                    _ => Err(UpmError::ParseExtensionError(format!("\".{}\"", ext))),
+                }
+            }
+            None => Err(UpmError::ParseExtensionError("None".to_string())),
+        }
     }
 }
