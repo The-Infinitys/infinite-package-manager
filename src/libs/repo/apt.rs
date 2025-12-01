@@ -1,7 +1,12 @@
-pub mod parser;
+mod parser;
 
 // Key/Value形式のオプションを保持する型を定義します
-use std::{collections::HashMap, path::PathBuf};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
+
+use crate::modules::error::UpmError;
 
 #[derive(Debug, PartialEq, Eq, Clone, Default)]
 pub enum AptRepositoryType {
@@ -60,5 +65,8 @@ impl AptRepositoryEntry {
             signed_by,
             options,
         }
+    }
+    pub fn load(path: impl AsRef<Path>) -> Result<Vec<Self>, UpmError> {
+        parser::sources(path)
     }
 }

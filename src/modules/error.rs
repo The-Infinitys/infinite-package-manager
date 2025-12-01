@@ -4,4 +4,6 @@ pub enum UpmError {
     Io(#[from] std::io::Error),
     #[error("Deb Sources Parser Error: {0}")]
     Deb822(#[from] deb822_lossless::Error),
+    #[error("{0}")]
+    Other(String),
 }

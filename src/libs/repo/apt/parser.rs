@@ -5,13 +5,9 @@ use deb822_lossless::Deb822;
 use std::path::Path;
 
 pub fn sources(path: impl AsRef<Path>) -> Result<Vec<AptRepositoryEntry>, UpmError> {
-    // 1. ファイルを読み込み、Deb822形式の段落（リポジトリエントリ）にパース
     let deb_info = Deb822::from_file(&path)?.paragraphs();
     let mut repo_entries: Vec<AptRepositoryEntry> = vec![];
-
-    // 2. 各段落を AptRepositoryEntry に変換
     for info in deb_info {
-        // new()のデフォルト値が適切でない場合があるため、ここで適切に初期化または修正
         let mut repo_entry = AptRepositoryEntry {
             enabled: true, // デフォルトで有効とする
             ..AptRepositoryEntry::new()
