@@ -28,7 +28,7 @@ pub fn list(path: impl AsRef<Path>) -> Result<Vec<AptRepositoryEntry>, UpmError>
             match i {
                 0 => {
                     let repo_type =
-                        AptRepositoryType::try_from(entry).map_err(|e| UpmError::ParseError(e))?;
+                        AptRepositoryType::try_from(entry).map_err(UpmError::ParseError)?;
                     repo_entry.repo_type.push(repo_type);
                 }
                 1 => {
