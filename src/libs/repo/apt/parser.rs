@@ -44,8 +44,8 @@ pub fn list(path: impl AsRef<Path>) -> Result<Vec<AptRepositoryEntry>, UpmError>
         remaining = remaining.trim_start();
 
         // 2. インラインオプションブロック ([...]) を抽出
-        if remaining.starts_with('[') {
-            if let Some(end_index) = remaining.find(']') {
+        if remaining.starts_with('[')
+            && let Some(end_index) = remaining.find(']') {
                 // オプションブロック全体を抽出 (e.g., "[signed-by=/keyring.gpg arch=amd64]")
                 let options_block = &remaining[1..end_index];
 
@@ -78,7 +78,6 @@ pub fn list(path: impl AsRef<Path>) -> Result<Vec<AptRepositoryEntry>, UpmError>
                 // オプションブロックとそれに続く空白を、残りの行から削除
                 remaining = remaining[(end_index + 1)..].trim_start();
             }
-        }
 
         // 3. URI, Suite, Components を抽出
         let entries: Vec<&str> = remaining.split_ascii_whitespace().collect();

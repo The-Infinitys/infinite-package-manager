@@ -24,7 +24,7 @@ impl RepositoryEntry {
                 let entries = apt::AptRepositoryEntry::load_all()?;
                 Ok(entries
                     .into_iter()
-                    .map(|apt_repository_entry| RepositoryEntry::Apt(apt_repository_entry))
+                    .map(RepositoryEntry::Apt)
                     .collect())
             }
             _ => Err(UpmError::Unsupported),
