@@ -54,4 +54,3 @@ pub fn update() -> Result<(), UpmError> {
         _ => Err(UpmError::Unsupported),
     }
 }
-
