@@ -1,10 +1,12 @@
 use super::AptRepositoryEntry;
 use super::AptRepositoryType;
+use crate::libs::repo::apt::AptRepositoryKeyInfo;
 use crate::modules::error::UpmError;
 use deb822_lossless::Deb822;
 use std::fs;
 use std::io::{self, BufRead};
 use std::path::Path;
+use std::path::PathBuf;
 /// sources.list形式のファイルからリポジトリエントリを解析します。
 pub fn list(path: impl AsRef<Path>) -> Result<Vec<AptRepositoryEntry>, UpmError> {
     let file = fs::File::open(path)?;
@@ -13,37 +15,95 @@ pub fn list(path: impl AsRef<Path>) -> Result<Vec<AptRepositoryEntry>, UpmError>
 
     for line in reader.lines() {
         let line = line?;
-        let trimmed_line = match line.split_once("#") {
+        // コメント（#以降）を削除し、行頭行末の空白を削除
+        let trimmed_line = match line.split_once('#') {
             Some((line, _comment)) => line,
             None => line.as_str(),
         }
         .trim();
+
+        // 短すぎる行はスキップ
         if trimmed_line.len() < 4 {
             continue;
         }
-        let entries: Vec<&str> = trimmed_line.split_ascii_whitespace().collect();
-        println!("{}", entries.len());
+
         let mut repo_entry = AptRepositoryEntry::new();
-        for (i, entry) in entries.into_iter().enumerate() {
-            match i {
-                0 => {
-                    let repo_type =
-                        AptRepositoryType::try_from(entry).map_err(UpmError::ParseError)?;
-                    repo_entry.repo_type.push(repo_type);
+        repo_entry.enabled = true; // sources.list形式は基本的に有効
+
+        // 1. リポジトリタイプ (deb/deb-src) を抽出
+        let (repo_type_str, mut remaining) = trimmed_line
+            .split_once(char::is_whitespace)
+            .unwrap_or((trimmed_line, ""));
+
+        let repo_type = match AptRepositoryType::try_from(repo_type_str) {
+            Ok(t) => t,
+            Err(_) => continue, // 不正なタイプの場合はスキップ
+        };
+        repo_entry.repo_type.push(repo_type);
+
+        remaining = remaining.trim_start();
+
+        // 2. インラインオプションブロック ([...]) を抽出
+        if remaining.starts_with('[') {
+            if let Some(end_index) = remaining.find(']') {
+                // オプションブロック全体を抽出 (e.g., "[signed-by=/keyring.gpg arch=amd64]")
+                let options_block = &remaining[1..end_index];
+
+                // オプションをパース
+                for option_pair in options_block.split_ascii_whitespace() {
+                    if let Some((key, value)) = option_pair.split_once('=') {
+                        let key = key.trim();
+                        let value = value.trim();
+
+                        match key.to_lowercase().as_str() {
+                            "signed-by" => {
+                                // signed-byはPathとして処理
+                                repo_entry.signed_by =
+                                    AptRepositoryKeyInfo::Path(PathBuf::from(value));
+                            }
+                            "arch" | "architectures" => {
+                                // Architecturesを処理
+                                repo_entry.architectures =
+                                    value.split(',').map(|s| s.trim().to_string()).collect();
+                            }
+                            _ => {
+                                repo_entry
+                                    .options
+                                    .insert(key.to_string(), value.to_string());
+                            }
+                        }
+                    }
                 }
-                1 => {
-                    repo_entry.uris = entry.to_string();
-                }
-                2 => {
-                    repo_entry.suites.push(entry.to_string());
-                }
-                _ => {
-                    repo_entry.components.push(entry.to_string());
-                }
+
+                // オプションブロックとそれに続く空白を、残りの行から削除
+                remaining = remaining[(end_index + 1)..].trim_start();
             }
         }
-        repo_entry.enabled = true;
-        repo_entries.push(repo_entry);
+
+        // 3. URI, Suite, Components を抽出
+        let entries: Vec<&str> = remaining.split_ascii_whitespace().collect();
+
+        // 必須フィールド (URI, Suite) があるかチェック
+        if entries.len() < 2 {
+            // URIまたはSuiteがない場合はスキップ（エラーにせず）
+            continue;
+        }
+
+        // URI
+        repo_entry.uris = entries[0].to_string();
+
+        // Suite
+        repo_entry.suites.push(entries[1].to_string());
+
+        // Components (残りのエントリ)
+        for entry in entries.into_iter().skip(2) {
+            repo_entry.components.push(entry.to_string());
+        }
+
+        // URIsが設定されているエントリのみを追加
+        if !repo_entry.uris.is_empty() {
+            repo_entries.push(repo_entry);
+        }
     }
 
     Ok(repo_entries)
@@ -88,7 +148,18 @@ pub fn sources(path: impl AsRef<Path>) -> Result<Vec<AptRepositoryEntry>, UpmErr
                             .map(|s| s.to_string())
                             .collect();
                     }
-                    // TODO: Signed-By や Options の処理もここに追加する
+                    "Signed-By" => {
+                        let value = value.trim();
+                        repo_entry.signed_by =
+                            AptRepositoryKeyInfo::Path(PathBuf::from(value.trim()));
+                    }
+                    "Architectures" => {
+                        // Architecturesはスペース区切りのリスト
+                        repo_entry.architectures = value
+                            .split_ascii_whitespace()
+                            .map(|s| s.to_string())
+                            .collect();
+                    }
                     _ => {
                         repo_entry
                             .options
@@ -124,7 +195,7 @@ mod tests {
         let first_entry = &entries[0];
         println!("{:#?}", first_entry);
         assert_eq!(first_entry.repo_type.len(), 1);
-        assert!(first_entry.repo_type.contains(&AptRepositoryType::Deb));
+        assert_eq!(first_entry.repo_type, vec![AptRepositoryType::Deb]);
         assert_eq!(first_entry.uris, "http://deb.debian.org/debian".to_string());
         assert!(first_entry.suites.contains(&"bookworm".to_string()));
         assert_eq!(first_entry.components.len(), 2);
@@ -156,8 +227,11 @@ mod tests {
         let first_entry = &entries[0];
 
         // Type が正しくパースされていること
-        assert_eq!(first_entry.repo_type.len(), 1);
-        assert!(first_entry.repo_type.contains(&AptRepositoryType::Deb));
+        assert_eq!(first_entry.repo_type.len(), 2);
+        assert_eq!(
+            first_entry.repo_type,
+            vec![AptRepositoryType::Deb, AptRepositoryType::DebSrc]
+        );
 
         // URIs が正しく読み込まれていること
         assert_eq!(first_entry.uris, "http://archive.ubuntu.com/ubuntu/");

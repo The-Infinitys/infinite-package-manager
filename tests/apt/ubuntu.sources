@@ -1,4 +1,4 @@
-Types: deb
+Types: deb deb-src
 URIs: http://archive.ubuntu.com/ubuntu/
 Suites: noble noble-updates noble-backports
 Components: main restricted universe multiverse

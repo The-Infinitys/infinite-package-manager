@@ -10,4 +10,6 @@ pub enum UpmError {
     ParseError(String),
     #[error("Parse Error: {0} is invalid extension for parse")]
     ParseExtensionError(String),
+    #[error("Unsupported execution")]
+    Unsupported,
 }
