@@ -39,7 +39,7 @@ pub fn list(path: impl AsRef<Path>) -> Result<Vec<AptRepositoryEntry>, UpmError>
             Ok(t) => t,
             Err(_) => continue, // 不正なタイプの場合はスキップ
         };
-        repo_entry.repo_type.push(repo_type);
+        repo_entry.repo_types.push(repo_type);
 
         remaining = remaining.trim_start();
 
@@ -124,7 +124,7 @@ pub fn sources(path: impl AsRef<Path>) -> Result<Vec<AptRepositoryEntry>, UpmErr
                 match key.as_str() {
                     "Types" => {
                         // Types の抽出とパース
-                        repo_entry.repo_type = value
+                        repo_entry.repo_types = value
                             .split_ascii_whitespace()
                             .filter_map(|value| AptRepositoryType::try_from(value).ok())
                             .collect();
@@ -193,8 +193,8 @@ mod tests {
         );
         let first_entry = &entries[0];
         println!("{:#?}", first_entry);
-        assert_eq!(first_entry.repo_type.len(), 1);
-        assert_eq!(first_entry.repo_type, vec![AptRepositoryType::Deb]);
+        assert_eq!(first_entry.repo_types.len(), 1);
+        assert_eq!(first_entry.repo_types, vec![AptRepositoryType::Deb]);
         assert_eq!(first_entry.uris, "http://deb.debian.org/debian".to_string());
         assert!(first_entry.suites.contains(&"bookworm".to_string()));
         assert_eq!(first_entry.components.len(), 2);
@@ -226,9 +226,9 @@ mod tests {
         let first_entry = &entries[0];
 
         // Type が正しくパースされていること
-        assert_eq!(first_entry.repo_type.len(), 2);
+        assert_eq!(first_entry.repo_types.len(), 2);
         assert_eq!(
-            first_entry.repo_type,
+            first_entry.repo_types,
             vec![AptRepositoryType::Deb, AptRepositoryType::DebSrc]
         );
 

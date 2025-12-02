@@ -1,8 +1,9 @@
+mod deb;
 mod parser;
-
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
+    process::Command,
 };
 
 use crate::{
@@ -67,7 +68,7 @@ impl fmt::Display for AptRepositoryEntry {
 
         // Types:
         writeln!(f, "{}:", "Types".color(key_color).bold(),)?;
-        for repo_type in &self.repo_type {
+        for repo_type in &self.repo_types {
             writeln!(f, "  - {}", repo_type.to_string().dimmed())?;
         }
 
@@ -151,7 +152,7 @@ pub enum AptRepositoryKeyInfo {
 }
 #[derive(Debug, Clone)]
 pub struct AptRepositoryEntry {
-    pub repo_type: Vec<AptRepositoryType>,
+    pub repo_types: Vec<AptRepositoryType>,
     pub uris: String,
     pub suites: Vec<String>,
     pub components: Vec<String>,
@@ -173,11 +174,22 @@ impl AptRepositoryEntry {
         let suites = vec![];
         let components = vec![];
         let enabled = false;
-        let architectures = vec![];
+        let architectures = match Command::new("dpkg").arg("--print-architecture").output() {
+            Ok(output) if output.status.success() => {
+                let arch = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if arch.is_empty() { vec![] } else { vec![arch] }
+            }
+            _ => {
+                eprintln!(
+                    "Warning: Failed to determine native architecture using 'dpkg --print-architecture'. Falling back to empty architecture list."
+                );
+                vec![]
+            }
+        };
         let signed_by = AptRepositoryKeyInfo::None;
         let options = HashMap::new();
         Self {
-            repo_type,
+            repo_types: repo_type,
             uris,
             suites,
             components,
@@ -249,5 +261,44 @@ impl AptRepositoryEntry {
         }
 
         Ok(all_entries)
+    }
+    fn parent_urls(&self) -> Vec<String> {
+        let architectures = &self.architectures;
+        self.repo_types
+            .iter()
+            .flat_map(|repo_type| {
+                self.suites.iter().flat_map(move |suite| {
+                    self.components.iter().flat_map(move |component| {
+                        match repo_type {
+                            AptRepositoryType::Deb => {
+                                // Debタイプの場合、アーキテクチャの数だけURLを生成
+                                architectures
+                                    .iter()
+                                    .map(move |architecture| {
+                                        format!(
+                                            "{}/dists/{}/{}/binary-{}/",
+                                            self.uris, suite, component, architecture
+                                        )
+                                    })
+                                    .collect::<Vec<_>>()
+                            }
+                            AptRepositoryType::DebSrc => {
+                                // DebSrcタイプの場合、アーキテクチャに依存せず1つのURLを生成
+                                vec![format!(
+                                    "{}/dists/{}/{}/source/",
+                                    self.uris, suite, component
+                                )]
+                            }
+                        }
+                    })
+                })
+            })
+            .collect::<Vec<String>>()
+    }
+    pub fn target_urls(&self, ext: &str) -> Vec<String> {
+        self.parent_urls()
+            .iter()
+            .map(|parent| format!("{}/Package.{}", parent, ext))
+            .collect()
     }
 }
