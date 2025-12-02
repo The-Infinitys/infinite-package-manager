@@ -34,15 +34,15 @@ impl fmt::Debug for UpmError {
             UpmError::Io(e) => {
                 // 2. KindとMessageを別々の行に出力
                 writeln!(f, "  {}: {}", "kind".cyan(), "Io".yellow())?;
-                write!(f, "  {}: \"{}\"", "message".cyan(), e.to_string())
+                write!(f, "  {}: \"{}\"", "message".cyan(), e)
             }
             UpmError::Deb822(e) => {
                 writeln!(f, "  {}: {}", "kind".cyan(), "Deb822".yellow())?;
-                write!(f, "  {}: \"{}\"", "message".cyan(), e.to_string())
+                write!(f, "  {}: \"{}\"", "message".cyan(), e)
             }
             UpmError::Deb822Parse(e) => {
                 writeln!(f, "  {}: {}", "kind".cyan(), "Deb822Parse".yellow())?;
-                write!(f, "  {}: \"{}\"", "message".cyan(), e.to_string())
+                write!(f, "  {}: \"{}\"", "message".cyan(), e)
             }
             UpmError::Other(msg) => {
                 writeln!(f, "  {}: {}", "kind".cyan(), "Other".yellow())?;
