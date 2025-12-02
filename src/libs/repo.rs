@@ -1,4 +1,5 @@
 use std::fmt::Display;
+use std::process::Command;
 
 use crate::{
     libs::system::{self, PackageManager},
@@ -36,3 +37,21 @@ pub fn print_list() -> Result<(), UpmError> {
     }
     Ok(())
 }
+
+pub fn update() -> Result<(), UpmError> {
+    let output = Command::new("id").arg("-u").output()?;
+    let uid = String::from_utf8_lossy(&output.stdout)
+        .trim()
+        .parse::<u32>()
+        .map_err(|e| UpmError::Other(format!("Failed to parse UID: {}", e)))?;
+
+    if uid != 0 {
+        return Err(UpmError::Permission);
+    }
+
+    match system::PackageManager::get() {
+        PackageManager::Dpkg => apt::update(),
+        _ => Err(UpmError::Unsupported),
+    }
+}
+

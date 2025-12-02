@@ -301,3 +301,6 @@ impl AptRepositoryEntry {
             .collect()
     }
 }
+pub fn update() -> Result<(), UpmError> {
+    Ok(())
+}

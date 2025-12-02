@@ -50,6 +50,8 @@ pub enum RepoCommands {
         /// The repository name or string to remove
         name: String,
     },
+    /// Update repository lists
+    Update,
 }
 
 #[derive(Debug, Args)]
@@ -113,6 +115,10 @@ impl Cli {
                         "Repository remove not yet implemented for: {}",
                         name
                     )))
+                }
+                RepoCommands::Update => {
+                    println!("Updating repository lists...");
+                    repo::update()
                 }
             },
             SubCommands::Pkg(pkg_args) => match &pkg_args.command {
