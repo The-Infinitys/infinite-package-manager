@@ -22,10 +22,26 @@ impl PackageEntry {
         match system::PackageManager::get() {
             PackageManager::Dpkg => {
                 let entries = deb::DebPackageEntry::load_all()?;
-                Ok(entries
-                    .into_iter()
-                    .map(PackageEntry::Deb)
-                    .collect())
+                // let mut debugs: HashMap<String, u32> = HashMap::new();
+
+                // for entry in entries.iter() {
+                //     // extra_fields のイテレーション
+                //     for key in entry.extra_fields.keys() {
+                //         // エントリのキーの出現回数をインクリメント
+                //         *debugs.entry(key.clone()).or_insert(0) += 1;
+                //     }
+                // }
+
+                // // --- 結果の出力 ---
+                // eprintln!("--- Extra Fields Occurrence Count ---");
+                // // 出現回数の降順でソートして表示すると、重要な不足フィールドが見つけやすいです
+                // let mut sorted_debugs: Vec<(String, u32)> = debugs.into_iter().collect();
+                // sorted_debugs.sort_by(|a, b| b.1.cmp(&a.1));
+
+                // for (key, count) in sorted_debugs {
+                //     eprintln!("{}: {}", key, count);
+                // }
+                Ok(entries.into_iter().map(PackageEntry::Deb).collect())
             }
             _ => Err(UpmError::Unsupported),
         }

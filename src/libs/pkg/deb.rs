@@ -1,11 +1,7 @@
 mod parser;
 
-use std::{
-    collections::HashMap,
-    path::Path,
-    str::FromStr,
-};
 use deb822_lossless::Deb822;
+use std::{collections::HashMap, path::Path, str::FromStr};
 
 use crate::modules::error::UpmError;
 
@@ -19,11 +15,24 @@ pub struct DebPackageEntry {
     pub maintainer: String,
     pub homepage: Option<String>,
     pub depends: Vec<String>,
-    pub status: String, // e.g., "install ok installed"
-    // その他のフィールドを必要に応じて追加
+    pub status: String,         // e.g., "install ok installed"
+    pub priority: String,       // e.g., "optional"
+    pub section: String,        // e.g., "devel"
+    pub source: Option<String>, // ソースパッケージ名 (バージョン情報を含む場合もある)
+    pub replaces: Vec<String>,
+    pub provides: Vec<String>,
+    pub conflicts: Vec<String>,
+    pub pre_depends: Vec<String>,
+    pub breaks: Vec<String>,
+    pub conffiles: Option<Vec<String>>, // 設定ファイルリスト
+    pub original_maintainer: Option<String>,
+    pub multi_arch: Option<String>,
+    pub recommends: Vec<String>,
+    pub suggests: Vec<String>,
+    pub enhances: Vec<String>,
+    pub essential: Option<String>,
     pub extra_fields: HashMap<String, String>,
 }
-
 use colored::*;
 use std::fmt;
 
@@ -142,12 +151,39 @@ impl DebPackageEntry {
                         "Maintainer" => package_entry.maintainer = value.to_string(),
                         "Homepage" => package_entry.homepage = Some(value.to_string()),
                         "Depends" => {
-                            package_entry.depends = value
-                                .split(',')
-                                .map(|s| s.trim().to_string())
-                                .collect();
+                            package_entry.depends =
+                                value.split(',').map(|s| s.trim().to_string()).collect();
                         }
                         "Status" => package_entry.status = value.to_string(),
+                        "Priority" => package_entry.priority = value.to_string(),
+                        "Section" => package_entry.section = value.to_string(),
+                        "Source" => package_entry.source = Some(value.to_string()),
+                        "Replaces" => {
+                            package_entry.replaces =
+                                value.split(',').map(|s| s.trim().to_string()).collect()
+                        }
+                        "Provides" => {
+                            package_entry.provides =
+                                value.split(',').map(|s| s.trim().to_string()).collect()
+                        }
+                        "Conflicts" => {
+                            package_entry.conflicts =
+                                value.split(',').map(|s| s.trim().to_string()).collect()
+                        }
+                        "Pre-Depends" => {
+                            package_entry.pre_depends =
+                                value.split(',').map(|s| s.trim().to_string()).collect()
+                        }
+                        "Breaks" => {
+                            package_entry.breaks =
+                                value.split(',').map(|s| s.trim().to_string()).collect()
+                        }
+
+                        // Conffiles は複数行の場合があるため、値全体を改行で分割してリストにする
+                        "Conffiles" => {
+                            package_entry.conffiles =
+                                Some(value.lines().map(|s| s.trim().to_string()).collect());
+                        }
                         _ => {
                             package_entry
                                 .extra_fields
@@ -159,7 +195,9 @@ impl DebPackageEntry {
         }
 
         if package_entry.package.is_empty() {
-            Err(UpmError::ParseError("No package information found".to_string()))
+            Err(UpmError::ParseError(
+                "No package information found".to_string(),
+            ))
         } else {
             Ok(package_entry)
         }
@@ -176,6 +214,21 @@ impl DebPackageEntry {
             homepage: None,
             depends: Vec::new(),
             status: String::new(),
+            priority: String::new(),
+            section: String::new(),
+            source: None,
+            replaces: Vec::new(),
+            provides: Vec::new(),
+            conflicts: Vec::new(),
+            pre_depends: Vec::new(),
+            breaks: Vec::new(),
+            conffiles: None,
+            original_maintainer: None,
+            multi_arch: None,
+            recommends: Vec::new(),
+            suggests: Vec::new(),
+            enhances: Vec::new(),
+            essential: None,
             extra_fields: HashMap::new(),
         }
     }

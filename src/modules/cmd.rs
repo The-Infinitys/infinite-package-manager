@@ -1,6 +1,6 @@
 use clap::{Args, Parser, Subcommand};
 
-use crate::libs::repo;
+use crate::libs::{pkg, repo};
 use crate::modules::error::UpmError;
 
 #[derive(Debug, Parser)]
@@ -156,10 +156,7 @@ impl Cli {
                 }
                 PkgCommands::List => {
                     println!("Listing installed packages...");
-                    // Placeholder for actual pkg list logic
-                    Err(UpmError::Other(
-                        "Package list not yet implemented".to_string(),
-                    ))
+                    pkg::print_list()
                 }
             },
         }
