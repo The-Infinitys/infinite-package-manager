@@ -1,0 +1,23 @@
+Package: apt
+Version: 2.7.7
+Architecture: amd64
+Installed-Size: 5293
+Maintainer: Debian APT Team <deity@lists.debian.org>
+Original-Maintainer: APT Development Team <deity@lists.debian.org>
+Description: commandline package manager
+ This package provides commandline tools for searching, downloading, and
+ installing APT source, binary and changelog files.
+Homepage: https://wiki.debian.org/Apt
+Depends: some-dependency (>= 1.0)
+Status: install ok installed
+
+Package: bash
+Version: 5.2.15-2
+Architecture: amd64
+Installed-Size: 1729
+Maintainer: Debian Bash Maintainers <pkg-bash-devel@lists.alioth.debian.org>
+Description: GNU Bourne Again SHell
+ The GNU Bourne Again SHell
+Status: install ok installed
+
+

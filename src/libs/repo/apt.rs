@@ -1,4 +1,3 @@
-mod deb;
 mod parser;
 use std::{
     collections::HashMap,

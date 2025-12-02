@@ -5,26 +5,26 @@ use crate::{
     modules::error::UpmError,
 };
 
-mod apt;
+pub mod deb;
 
-pub enum RepositoryEntry {
-    Apt(apt::AptRepositoryEntry),
+pub enum PackageEntry {
+    Deb(deb::DebPackageEntry),
 }
-impl Display for RepositoryEntry {
+impl Display for PackageEntry {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Apt(apt_repository_entry) => write!(f, "{}", apt_repository_entry),
+            Self::Deb(deb_package_entry) => write!(f, "{}", deb_package_entry),
         }
     }
 }
-impl RepositoryEntry {
+impl PackageEntry {
     pub fn load() -> Result<Vec<Self>, UpmError> {
         match system::PackageManager::get() {
             PackageManager::Dpkg => {
-                let entries = apt::AptRepositoryEntry::load_all()?;
+                let entries = deb::DebPackageEntry::load_all()?;
                 Ok(entries
                     .into_iter()
-                    .map(RepositoryEntry::Apt)
+                    .map(PackageEntry::Deb)
                     .collect())
             }
             _ => Err(UpmError::Unsupported),
@@ -33,7 +33,7 @@ impl RepositoryEntry {
 }
 
 pub fn print_list() -> Result<(), UpmError> {
-    let entries = RepositoryEntry::load()?;
+    let entries = PackageEntry::load()?;
     for entry in entries {
         println!("{}", entry);
     }

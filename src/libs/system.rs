@@ -5,7 +5,7 @@ use std::path::Path;
 /// サポートされている主要なパッケージマネージャーの列挙型。
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum PackageManager {
-    Apt,    // Debian/Ubuntu/Mint など
+    Dpkg,    // Debian/Ubuntu/Mint など
     Dnf,    // Fedora/RHEL/CentOS 8+ など (dnf.conf)
     Yum,    // RHEL/CentOS 7- など (yum.conf)
     Pacman, // Arch Linux/Manjaro など
@@ -19,8 +19,8 @@ impl PackageManager {
         // 優先度の高い順にチェックを行います。
 
         // 1. Debian/Ubuntu 系 (apt)
-        if Path::new("/etc/apt/sources.list").exists() {
-            return Self::Apt;
+        if Path::new("/etc/dpkg/dpkg.cfg").exists() {
+            return Self::Dpkg;
         }
 
         // 2. Fedora/RHEL 系 (dnf/yum)

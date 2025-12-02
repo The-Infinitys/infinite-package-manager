@@ -1,0 +1,32 @@
+Package: git
+Status: install ok installed
+Priority: optional
+Section: vcs
+Installed-Size: 25960
+Maintainer: Ubuntu Developers <ubuntu-devel-discuss @lists.ubuntu.com>
+Architecture: amd64
+Multi-Arch: foreign
+Version: 1:2.51.0-1ubuntu1
+Provides: git-completion, git-core
+Depends: libc6 (>= 2.42), libcurl3t64-gnutls (>= 7.56.1), libexpat1 (>= 2.0.1), libpcre2-8-0 (>= 10.34), zlib1g (>= 1:1.2.2), perl, liberror-perl, git-man (>> 1:2.51.0), git-man (<< 1:2.51.0-.)
+Recommends: ca-certificates, patch, less, ssh-client
+Suggests: gettext-base, git-doc, git-email, git-gui, gitk, gitweb, git-cvs, git-svn
+Breaks: bash-completion (<< 1:1.90-1), cogito (<= 0.18.2+), dgit (<< 5.1~), git-buildpackage (<< 0.6.5), git-el (<< 1:2.32.0~rc2-1~), gitosis (<< 0.2+20090917-7), gitpkg (<< 0.15), guilt (<< 0.33), openssh-client (<< 1:6.8), stgit (<< 0.15), stgit-contrib (<< 0.15)
+Conffiles:
+ /etc/bash_completion.d/git-prompt 7baac5c3ced94ebf2c0e1dde65c3b1a6
+Description: fast, scalable, distributed revision control system
+ Git is popular version control system designed to handle very large
+ projects with speed and efficiency; it is used for many high profile
+ open source projects, most notably the Linux kernel.
+ .
+ Git falls in the category of distributed source code management tools.
+ Every Git working directory is a full-fledged repository with full
+ revision tracking capabilities, not dependent on network access or a
+ central server.
+ .
+ This package provides the git main components with minimal dependencies.
+ Additional functionality, e.g. a graphical user interface and revision
+ tree visualizer, tools for interoperating with other VCS's, or a web
+ interface, is provided as separate git* packages.
+Original-Maintainer: Jonathan Nieder <jrnieder @gmail.com>
+Homepage: https://git-scm.com/
