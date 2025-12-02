@@ -45,39 +45,39 @@ pub fn list(path: impl AsRef<Path>) -> Result<Vec<AptRepositoryEntry>, UpmError>
 
         // 2. インラインオプションブロック ([...]) を抽出
         if remaining.starts_with('[')
-            && let Some(end_index) = remaining.find(']') {
-                // オプションブロック全体を抽出 (e.g., "[signed-by=/keyring.gpg arch=amd64]")
-                let options_block = &remaining[1..end_index];
+            && let Some(end_index) = remaining.find(']')
+        {
+            // オプションブロック全体を抽出 (e.g., "[signed-by=/keyring.gpg arch=amd64]")
+            let options_block = &remaining[1..end_index];
 
-                // オプションをパース
-                for option_pair in options_block.split_ascii_whitespace() {
-                    if let Some((key, value)) = option_pair.split_once('=') {
-                        let key = key.trim();
-                        let value = value.trim();
+            // オプションをパース
+            for option_pair in options_block.split_ascii_whitespace() {
+                if let Some((key, value)) = option_pair.split_once('=') {
+                    let key = key.trim();
+                    let value = value.trim();
 
-                        match key.to_lowercase().as_str() {
-                            "signed-by" => {
-                                // signed-byはPathとして処理
-                                repo_entry.signed_by =
-                                    AptRepositoryKeyInfo::Path(PathBuf::from(value));
-                            }
-                            "arch" | "architectures" => {
-                                // Architecturesを処理
-                                repo_entry.architectures =
-                                    value.split(',').map(|s| s.trim().to_string()).collect();
-                            }
-                            _ => {
-                                repo_entry
-                                    .options
-                                    .insert(key.to_string(), value.to_string());
-                            }
+                    match key.to_lowercase().as_str() {
+                        "signed-by" => {
+                            // signed-byはPathとして処理
+                            repo_entry.signed_by = AptRepositoryKeyInfo::Path(PathBuf::from(value));
+                        }
+                        "arch" | "architectures" => {
+                            // Architecturesを処理
+                            repo_entry.architectures =
+                                value.split(',').map(|s| s.trim().to_string()).collect();
+                        }
+                        _ => {
+                            repo_entry
+                                .options
+                                .insert(key.to_string(), value.to_string());
                         }
                     }
                 }
-
-                // オプションブロックとそれに続く空白を、残りの行から削除
-                remaining = remaining[(end_index + 1)..].trim_start();
             }
+
+            // オプションブロックとそれに続く空白を、残りの行から削除
+            remaining = remaining[(end_index + 1)..].trim_start();
+        }
 
         // 3. URI, Suite, Components を抽出
         let entries: Vec<&str> = remaining.split_ascii_whitespace().collect();

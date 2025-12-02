@@ -5,7 +5,7 @@ use std::path::Path;
 /// サポートされている主要なパッケージマネージャーの列挙型。
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum PackageManager {
-    Dpkg,    // Debian/Ubuntu/Mint など
+    Dpkg,   // Debian/Ubuntu/Mint など
     Dnf,    // Fedora/RHEL/CentOS 8+ など (dnf.conf)
     Yum,    // RHEL/CentOS 7- など (yum.conf)
     Pacman, // Arch Linux/Manjaro など

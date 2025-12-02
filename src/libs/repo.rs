@@ -22,10 +22,7 @@ impl RepositoryEntry {
         match system::PackageManager::get() {
             PackageManager::Dpkg => {
                 let entries = apt::AptRepositoryEntry::load_all()?;
-                Ok(entries
-                    .into_iter()
-                    .map(RepositoryEntry::Apt)
-                    .collect())
+                Ok(entries.into_iter().map(RepositoryEntry::Apt).collect())
             }
             _ => Err(UpmError::Unsupported),
         }
