@@ -1,14 +1,15 @@
 mod parser;
+mod vec_traits;
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
     process::Command,
 };
 
-use crate::{
-    libs::repo::apt::parser::{list, sources},
-    modules::error::UpmError,
-};
+use crate::modules::error::UpmError;
+use parser::list;
+use parser::sources;
+use vec_traits::AptRepositoryVecExt;
 
 #[derive(Debug, PartialEq, Eq, Clone, Default)]
 pub enum AptRepositoryType {
@@ -302,5 +303,7 @@ impl AptRepositoryEntry {
     }
 }
 pub fn update() -> Result<(), UpmError> {
+    let apt_repositry_entries = AptRepositoryEntry::load_all()?;
+    let prechecked = apt_repositry_entries.precheck()?;
     Ok(())
 }
