@@ -1,12 +1,13 @@
 mod parser;
 mod release;
+mod vec_traits;
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
     process::Command,
 };
 
-use crate::modules::error::UpmError;
+use crate::{libs::repo::apt::vec_traits::AptRepositoryEntryVec, modules::error::UpmError};
 use base64::Engine;
 use parser::list;
 use parser::sources;
@@ -341,5 +342,8 @@ impl AptRepositoryEntry {
 
 /// APTリポジトリのインデックスを非同期に更新する
 pub async fn update() -> Result<(), UpmError> {
+    let in_release_cache_dir=Path::new("/var/lib/upm/lists");
+    let entries=AptRepositoryEntry::load_all().await?;
+    let in_release_targets=entries.in_release_targets();
     Ok(())
 }
