@@ -7,6 +7,7 @@ use std::{
 };
 
 use crate::modules::error::UpmError;
+use base64::Engine;
 use parser::list;
 use parser::sources;
 #[derive(Debug, PartialEq, Eq, Clone, Default)]
@@ -104,6 +105,26 @@ impl fmt::Display for AptRepositoryEntry {
             AptRepositoryKeyInfo::Path(path) => {
                 writeln!(f, "  {}", path.display().to_string().red().italic())?;
             }
+            AptRepositoryKeyInfo::Bin(bin) => {
+                let b = &base64::engine::general_purpose::STANDARD;
+                let encoded_key = b.encode(bin);
+
+                if encoded_key.len() > 16 {
+                    // 文字列が16文字より長い場合 (先頭8文字 + 末尾8文字 + 省略記号)
+                    let start = &encoded_key[..8];
+                    let end = &encoded_key[encoded_key.len() - 8..];
+
+                    // 省略形式で表示
+                    writeln!(
+                        f,
+                        "  {}",
+                        format!("{}{}{}", start.red().italic(), "...".dimmed().italic(),end.red().italic()).to_string() // 色はPathに合わせて赤に
+                    )?;
+                } else {
+                    // 文字列が短い場合は全体を表示
+                    writeln!(f, "  {}", encoded_key.to_string().red().italic())?;
+                }
+            }
             AptRepositoryKeyInfo::None => {
                 let display_text = "[No Key Specified]".to_string();
                 writeln!(f, "  {}", display_text.red().dimmed().italic())?;
@@ -147,6 +168,7 @@ impl TryFrom<&str> for AptRepositoryType {
 
 pub enum AptRepositoryKeyInfo {
     Path(PathBuf),
+    Bin(Vec<u8>),
     None,
 }
 #[derive(Debug, Clone)]
@@ -263,14 +285,15 @@ impl AptRepositoryEntry {
             }
         }
 
-        let results = futures::future::join_all(tasks)
-            .await
+        let results = futures::future::join_all(tasks).await;
+        let all_entries: Vec<Vec<Self>> = results
             .into_iter()
-            .map(|r| r?)
-            .map(|r| r?)
-            .map(|r| r);
-        let results:Vec<Self>=results.collect();
-        Ok(Vec::new())
+            .filter_map(|r| r.ok())
+            .filter_map(Result::ok)
+            .flatten()
+            .collect();
+        let all_entries = all_entries.into_iter().flatten().collect();
+        Ok(all_entries)
     }
     /// 個々のリポジトリ設定から、ダウンロード対象となるベースURLを生成する
     fn parent_urls(&self) -> Vec<String> {

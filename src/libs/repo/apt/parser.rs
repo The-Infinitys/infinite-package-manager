@@ -2,6 +2,7 @@ use super::AptRepositoryEntry;
 use super::AptRepositoryType;
 use crate::libs::repo::apt::AptRepositoryKeyInfo;
 use crate::modules::error::UpmError;
+use base64::Engine;
 use deb822_lossless::Deb822;
 use std::fs;
 use std::io::{self, BufRead};
@@ -149,8 +150,25 @@ pub fn sources(path: impl AsRef<Path>) -> Result<Vec<AptRepositoryEntry>, UpmErr
                     }
                     "Signed-By" => {
                         let value = value.trim();
-                        repo_entry.signed_by =
-                            AptRepositoryKeyInfo::Path(PathBuf::from(value.trim()));
+                        let begin_pgp = "-----BEGIN PGP PUBLIC KEY BLOCK-----";
+                        let end_pgp = "-----END PGP PUBLIC KEY BLOCK-----";
+                        let trim_value = value
+                            .strip_prefix(begin_pgp)
+                            .and_then(|v| v.strip_suffix(end_pgp));
+                        repo_entry.signed_by = match trim_value {
+                            Some(value) => {
+                                let bin = value
+                                    .split("\n")
+                                    .map(|s| s.trim())
+                                    .filter(|s| s != &".")
+                                    .collect::<Vec<&str>>()
+                                    .join("");
+                                let b = &base64::engine::general_purpose::STANDARD;
+                                let bin = b.decode(bin)?;
+                                AptRepositoryKeyInfo::Bin(bin)
+                            }
+                            None => AptRepositoryKeyInfo::Path(PathBuf::from(value)),
+                        }
                     }
                     "Architectures" => {
                         // Architecturesはスペース区切りのリスト
