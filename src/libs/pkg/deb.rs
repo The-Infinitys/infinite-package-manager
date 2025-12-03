@@ -238,8 +238,12 @@ impl DebPackageEntry {
         parser::parse_deb_status_file(path)
     }
 
+    pub fn _load_all_internal(status_file_path: impl AsRef<Path>) -> Result<Vec<Self>, UpmError> {
+        Self::load(status_file_path)
+    }
+
     pub fn load_all() -> Result<Vec<Self>, UpmError> {
         let status_file_path = Path::new("/var/lib/dpkg/status");
-        Self::load(status_file_path)
+        Self::_load_all_internal(status_file_path)
     }
 }

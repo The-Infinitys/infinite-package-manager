@@ -1,12 +1,9 @@
-use std::{
-    io::Read,
-    path::Path,
-};
+use std::{io::Read, path::Path};
 
-use flate2::read::GzDecoder;
 use deb822_lossless::Deb822;
+use flate2::read::GzDecoder;
 
-use crate::{modules::error::UpmError, libs::pkg::deb::DebPackageEntry};
+use crate::{libs::pkg::deb::DebPackageEntry, modules::error::UpmError};
 
 pub fn parse_packages_file(path: impl AsRef<Path>) -> Result<Vec<DebPackageEntry>, UpmError> {
     let path = path.as_ref();

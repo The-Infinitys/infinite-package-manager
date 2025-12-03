@@ -1,11 +1,11 @@
+use super::AptRepositoryEntry;
 use std::collections::HashSet;
 use std::path::PathBuf;
-use super::AptRepositoryEntry;
 
 /// AptRepositoryEntryのベクタに対する拡張トレイト
 pub trait AptRepositoryEntryVec {
     /// 各リポジトリエントリから、InReleaseファイルをダウンロードするためのターゲット情報リストを生成する
-    /// 
+    ///
     /// 戻り値: Vec<InReleaseTarget>
     fn in_release_targets(&self) -> Vec<super::InReleaseTarget>;
 }
@@ -15,7 +15,7 @@ impl AptRepositoryEntryVec for Vec<AptRepositoryEntry> {
     fn in_release_targets(&self) -> Vec<super::InReleaseTarget> {
         // Base64エンジンは使用しないが、他の箇所で使う可能性を考慮して残しておく
         let _base64_engine = base64::engine::general_purpose::STANDARD;
-        
+
         // 重複を避けるためにHashSetを使用
         let mut unique_targets = HashSet::new();
 
@@ -33,34 +33,37 @@ impl AptRepositoryEntryVec for Vec<AptRepositoryEntry> {
             });
 
         // 3. 一意のURLに対して、ローカル保存ファイル名を生成する
-        unique_targets.into_iter().map(|(url, signed_by_key)| {
-            // ローカルファイル名を作成 (ユーザー要望の形式: archive.ubuntu.com_ubuntu_dists_suite_InRelease)
-            let mut local_name = url.clone();
+        unique_targets
+            .into_iter()
+            .map(|(url, signed_by_key)| {
+                // ローカルファイル名を作成 (ユーザー要望の形式: archive.ubuntu.com_ubuntu_dists_suite_InRelease)
+                let mut local_name = url.clone();
 
-            // 1. スキーム (http://, https://) を削除
-            if let Some(stripped) = local_name.strip_prefix("http://") {
-                local_name = stripped.to_string();
-            } else if let Some(stripped) = local_name.strip_prefix("https://") {
-                local_name = stripped.to_string();
-            }
+                // 1. スキーム (http://, https://) を削除
+                if let Some(stripped) = local_name.strip_prefix("http://") {
+                    local_name = stripped.to_string();
+                } else if let Some(stripped) = local_name.strip_prefix("https://") {
+                    local_name = stripped.to_string();
+                }
 
-            // 2. 最後の "/InRelease" を削除
-            // InReleaseファイル自体が末尾に来ることを想定
-            if let Some(stripped) = local_name.strip_suffix("/InRelease") {
-                local_name = stripped.to_string();
-            }
+                // 2. 最後の "/InRelease" を削除
+                // InReleaseファイル自体が末尾に来ることを想定
+                if let Some(stripped) = local_name.strip_suffix("/InRelease") {
+                    local_name = stripped.to_string();
+                }
 
-            // 3. 残ったパスセパレータ "/" を "_" に置換
-            let filename_body = local_name.replace('/', "_");
-            
-            // 4. 拡張子 "_InRelease" を再付加
-            let local_filename = format!("{}_InRelease", filename_body);
+                // 3. 残ったパスセパレータ "/" を "_" に置換
+                let filename_body = local_name.replace('/', "_");
 
-            super::InReleaseTarget {
-                url,
-                local_path: PathBuf::from(local_filename),
-                signed_by_key,
-            }
-        }).collect()
+                // 4. 拡張子 "_InRelease" を再付加
+                let local_filename = format!("{}_InRelease", filename_body);
+
+                super::InReleaseTarget {
+                    url,
+                    local_path: PathBuf::from(local_filename),
+                    signed_by_key,
+                }
+            })
+            .collect()
     }
 }

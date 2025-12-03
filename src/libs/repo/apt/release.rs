@@ -1,4 +1,7 @@
-use std::{path::{Path, PathBuf}, str::FromStr};
+use std::{
+    path::{Path, PathBuf},
+    str::FromStr,
+};
 
 use base64::Engine;
 use serde::{Deserialize, Serialize};
@@ -233,7 +236,11 @@ impl AptReleaseInfo {
                 // Check if the file is a Packages file (could be Packages, Packages.gz, Packages.xz, etc.)
                 // For now, only consider Packages and Packages.gz
                 if file_name.ends_with("Packages") || file_name.ends_with("Packages.gz") {
-                    let url = format!("{}/{}", base_url.rsplit_once('/').unwrap_or((base_url, "")).0, file_name);
+                    let url = format!(
+                        "{}/{}",
+                        base_url.rsplit_once('/').unwrap_or((base_url, "")).0,
+                        file_name
+                    );
                     let local_path = packages_cache_dir.join(&meta.path);
                     targets.push(crate::libs::repo::apt::PackagesDownloadTarget {
                         url,

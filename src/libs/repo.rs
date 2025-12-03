@@ -1,4 +1,5 @@
 use std::fmt::Display;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::{
@@ -19,26 +20,51 @@ impl Display for RepositoryEntry {
     }
 }
 impl RepositoryEntry {
-    pub async fn load() -> Result<Vec<Self>, UpmError> {
+    pub(crate) async fn _load_internal(
+        apt_sources_dir: impl AsRef<Path>,
+        apt_sources_list_dir: impl AsRef<Path>,
+    ) -> Result<Vec<Self>, UpmError> {
         match system::PackageManager::get() {
             PackageManager::Dpkg => {
-                let entries = apt::AptRepositoryEntry::load_all().await?;
+                let entries = apt::AptRepositoryEntry::_load_all_internal(
+                    apt_sources_dir,
+                    apt_sources_list_dir,
+                )
+                .await?;
                 Ok(entries.into_iter().map(RepositoryEntry::Apt).collect())
             }
             _ => Err(UpmError::Unsupported),
         }
     }
+    pub async fn load() -> Result<Vec<Self>, UpmError> {
+        let apt_sources_dir = PathBuf::from("/etc/apt/sources.list");
+        let apt_sources_list_dir = PathBuf::from("/etc/apt/sources.list.d");
+        Self::_load_internal(apt_sources_dir, apt_sources_list_dir).await
+    }
 }
 
-pub async fn print_list() -> Result<(), UpmError> {
-    let entries = RepositoryEntry::load().await?;
+pub async fn _print_list_internal(
+    apt_sources_dir: impl AsRef<Path>,
+    apt_sources_list_dir: impl AsRef<Path>,
+) -> Result<(), UpmError> {
+    let entries = RepositoryEntry::_load_internal(apt_sources_dir, apt_sources_list_dir).await?;
     for entry in entries {
         println!("{}", entry);
     }
     Ok(())
 }
 
-pub async fn update() -> Result<(), UpmError> {
+pub async fn print_list() -> Result<(), UpmError> {
+    let apt_sources_dir = PathBuf::from("/etc/apt/sources.list");
+    let apt_sources_list_dir = PathBuf::from("/etc/apt/sources.list.d");
+    _print_list_internal(apt_sources_dir, apt_sources_list_dir).await
+}
+
+pub async fn _update_internal(
+    in_release_cache_dir: PathBuf,
+    packages_cache_dir: PathBuf,
+    package_list_dir: PathBuf,
+) -> Result<(), UpmError> {
     let output = Command::new("id").arg("-u").output()?;
     let uid = String::from_utf8_lossy(&output.stdout)
         .trim()
@@ -50,7 +76,16 @@ pub async fn update() -> Result<(), UpmError> {
     }
 
     match system::PackageManager::get() {
-        PackageManager::Dpkg => apt::update().await,
+        PackageManager::Dpkg => {
+            apt::_update_internal(in_release_cache_dir, packages_cache_dir, package_list_dir).await
+        }
         _ => Err(UpmError::Unsupported),
     }
+}
+
+pub async fn update() -> Result<(), UpmError> {
+    let in_release_cache_dir = PathBuf::from("/var/lib/upm/caches/lists/releases");
+    let packages_cache_dir = PathBuf::from("/var/lib/upm/caches/lists/packages");
+    let package_list_dir = PathBuf::from("/var/lib/upm/repo/packages");
+    _update_internal(in_release_cache_dir, packages_cache_dir, package_list_dir).await
 }

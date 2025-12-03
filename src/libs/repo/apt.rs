@@ -1,7 +1,7 @@
+mod packages_parser;
 mod parser;
 mod release;
-mod vec_traits;
-mod packages_parser; // Restored
+mod vec_traits; // Restored
 use crate::libs::repo::apt::release::AptReleaseInfo;
 use futures::future::join_all;
 use reqwest;
@@ -11,7 +11,7 @@ use std::path::Path;
 use std::{collections::HashMap, path::PathBuf, process::Command};
 use tokio::{
     fs::{self, File},
-    io::{AsyncWriteExt, AsyncReadExt},
+    io::{AsyncReadExt, AsyncWriteExt},
 }; // Add this
 
 use crate::{libs::repo::apt::vec_traits::AptRepositoryEntryVec, modules::error::UpmError};
@@ -267,9 +267,12 @@ impl AptRepositoryEntry {
             None => Err(UpmError::ParseExtensionError("None".to_string())),
         }
     }
-    pub async fn load_all() -> Result<Vec<Self>, UpmError> {
-        let parent_file = PathBuf::from("/etc/apt/sources.list");
-        let parent_dir = PathBuf::from("/etc/apt/sources.list.d");
+    pub async fn _load_all_internal(
+        apt_sources_dir: impl AsRef<Path>,
+        apt_sources_list_dir: impl AsRef<Path>,
+    ) -> Result<Vec<Self>, UpmError> {
+        let parent_file = apt_sources_dir.as_ref().to_path_buf();
+        let parent_dir = apt_sources_list_dir.as_ref().to_path_buf();
 
         // 複数の非同期タスクの結果を格納するためのベクタ
         let mut tasks = Vec::new();
@@ -324,6 +327,12 @@ impl AptRepositoryEntry {
             .collect();
         let all_entries = all_entries.into_iter().flatten().collect();
         Ok(all_entries)
+    }
+
+    pub async fn load_all() -> Result<Vec<Self>, UpmError> {
+        let apt_sources_dir = PathBuf::from("/etc/apt/sources.list");
+        let apt_sources_list_dir = PathBuf::from("/etc/apt/sources.list.d");
+        Self::_load_all_internal(apt_sources_dir, apt_sources_list_dir).await
     }
     /// 個々のリポジトリ設定から、ダウンロード対象となるベースURLを生成する
     fn parent_urls(&self) -> Vec<String> {
@@ -383,12 +392,11 @@ async fn download_file(url: &str, path: &Path) -> Result<(), UpmError> {
     Ok(())
 }
 
-// APTリポジトリのインデックスを非同期に更新する
-pub async fn update() -> Result<(), UpmError> {
-    let in_release_cache_dir = PathBuf::from("/var/lib/upm/caches/lists/releases");
-    let packages_cache_dir = PathBuf::from("/var/lib/upm/caches/lists/packages");
-    let package_list_dir = PathBuf::from("/var/lib/upm/repo/packages");
-
+pub async fn _update_internal(
+    in_release_cache_dir: PathBuf,
+    packages_cache_dir: PathBuf,
+    package_list_dir: PathBuf,
+) -> Result<(), UpmError> {
     // キャッシュディレクトリとパッケージリストディレクトリが存在することを確認
     tokio::fs::create_dir_all(&in_release_cache_dir).await?;
     tokio::fs::create_dir_all(&packages_cache_dir).await?;
@@ -402,7 +410,7 @@ pub async fn update() -> Result<(), UpmError> {
     // 1. InReleaseファイルをダウンロードし、検証する
     let in_release_processing_tasks = in_release_targets.into_iter().map(|target| {
         let in_release_cache_dir = in_release_cache_dir.clone();
-        let packages_cache_dir=packages_cache_dir.clone();
+        let packages_cache_dir = packages_cache_dir.clone();
         async move {
             let local_path = in_release_cache_dir.join(&target.local_path);
 
@@ -420,10 +428,7 @@ pub async fn update() -> Result<(), UpmError> {
 
             // PackagesDownloadTargetの抽出
             let apt_release_info: AptReleaseInfo = in_release_info.release;
-            Ok(apt_release_info.get_packages_download_targets(
-                &target.url,
-                &packages_cache_dir,
-            ))
+            Ok(apt_release_info.get_packages_download_targets(&target.url, &packages_cache_dir))
         }
     });
 
@@ -476,4 +481,13 @@ pub async fn update() -> Result<(), UpmError> {
     let _ = join_all(package_processing_tasks).await;
 
     Ok(())
+}
+
+// APTリポジトリのインデックスを非同期に更新する
+pub async fn update() -> Result<(), UpmError> {
+    let in_release_cache_dir = PathBuf::from("/var/lib/upm/caches/lists/releases");
+    let packages_cache_dir = PathBuf::from("/var/lib/upm/caches/lists/packages");
+    let package_list_dir = PathBuf::from("/var/lib/upm/repo/packages");
+
+    _update_internal(in_release_cache_dir, packages_cache_dir, package_list_dir).await
 }
