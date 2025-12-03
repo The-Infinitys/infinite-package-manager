@@ -30,6 +30,10 @@ pub enum UpmError {
     ParseIntError(#[from] std::num::ParseIntError),
     #[error("Async Runtime Join Error: {0}")]
     AsyncRuntimeJoinError(#[from] tokio::task::JoinError),
+    #[error("Serde Yaml Error: {0}")]
+    SerdeYaml(#[from] serde_yaml::Error),
+    #[error("www request error: {0}")]
+    WwwReqestError(#[from] reqwest::Error),
 }
 
 impl UpmError {
@@ -50,6 +54,8 @@ impl UpmError {
             UpmError::Permission => "Permission",
             UpmError::ParseIntError(_) => "ParseIntError",
             UpmError::AsyncRuntimeJoinError(_) => "AsyncRuntimeJoinError",
+            UpmError::SerdeYaml(_) => "SerdeYaml",
+            UpmError::WwwReqestError(_) => "WwwReqestError",
         };
         // Kindは必ず改行付きで出力します
         writeln!(f, "  {}: {}", kind_label, kind_value.yellow())
@@ -109,6 +115,12 @@ impl UpmError {
                 write!(f, "  {}: \"{}\"", message_label, e)
             }
             UpmError::AsyncRuntimeJoinError(e) => {
+                write!(f, "  {}: \"{}\"", message_label, e)
+            }
+            UpmError::SerdeYaml(e) => {
+                write!(f, "  {}: \"{}\"", message_label, e)
+            }
+            UpmError::WwwReqestError(e) => {
                 write!(f, "  {}: \"{}\"", message_label, e)
             }
         }

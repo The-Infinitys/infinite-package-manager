@@ -1,9 +1,11 @@
-use std::{path::PathBuf, str::FromStr};
+use std::{path::{Path, PathBuf}, str::FromStr};
 
 use base64::Engine;
+use serde::{Deserialize, Serialize};
 
-use crate::modules::error::UpmError; // UpmErrorのパスは仮定
-#[derive(Debug, Clone, Default)]
+use crate::modules::error::UpmError;
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AptInReleaseInfo {
     pub signature: Vec<u8>,
     pub release: AptReleaseInfo,
@@ -113,7 +115,7 @@ impl TryFrom<&str> for FileHashMetaData {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileHashMetaData {
     pub hash: Vec<u8>,
     pub size: u64,
@@ -128,7 +130,7 @@ impl Default for FileHashMetaData {
         }
     }
 }
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct AptReleaseInfo {
     pub origin: String,
     pub label: String,
@@ -216,6 +218,39 @@ impl AptReleaseInfo {
             }
         }
         Ok(release_info)
+    }
+
+    pub fn get_packages_download_targets(
+        &self,
+        base_url: &str,
+        packages_cache_dir: &Path,
+    ) -> Vec<crate::libs::repo::apt::PackagesDownloadTarget> {
+        let mut targets = Vec::new();
+
+        let mut add_targets = |hash_list: &[FileHashMetaData], hash_type: &str| {
+            for meta in hash_list {
+                let file_name = meta.path.to_string_lossy();
+                // Check if the file is a Packages file (could be Packages, Packages.gz, Packages.xz, etc.)
+                // For now, only consider Packages and Packages.gz
+                if file_name.ends_with("Packages") || file_name.ends_with("Packages.gz") {
+                    let url = format!("{}/{}", base_url.rsplit_once('/').unwrap_or((base_url, "")).0, file_name);
+                    let local_path = packages_cache_dir.join(&meta.path);
+                    targets.push(crate::libs::repo::apt::PackagesDownloadTarget {
+                        url,
+                        local_path,
+                        hash_type: hash_type.to_string(),
+                        expected_hash: meta.hash.clone(),
+                    });
+                }
+            }
+        };
+
+        // Prefer SHA256, then SHA1, then MD5
+        add_targets(&self.sha256, "sha256");
+        add_targets(&self.sha1, "sha1");
+        add_targets(&self.md5sum, "md5");
+
+        targets
     }
 }
 #[cfg(test)]

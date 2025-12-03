@@ -4,8 +4,9 @@ use deb822_lossless::Deb822;
 use std::{collections::HashMap, path::Path, str::FromStr};
 
 use crate::modules::error::UpmError;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DebPackageEntry {
     pub package: String,
     pub version: String,

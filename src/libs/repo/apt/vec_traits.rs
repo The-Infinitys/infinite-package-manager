@@ -1,37 +1,39 @@
 use std::collections::HashSet;
+use std::path::PathBuf;
 use super::AptRepositoryEntry;
 
 /// AptRepositoryEntryのベクタに対する拡張トレイト
 pub trait AptRepositoryEntryVec {
     /// 各リポジトリエントリから、InReleaseファイルをダウンロードするためのターゲット情報リストを生成する
     /// 
-    /// 戻り値: Vec<(ダウンロードURL: String, ローカル保存パスのファイル名: String)>
-    fn in_release_targets(&self) -> Vec<(String, String)>;
+    /// 戻り値: Vec<InReleaseTarget>
+    fn in_release_targets(&self) -> Vec<super::InReleaseTarget>;
 }
 
 // AptRepositoryEntryのベクタ（Vec<AptRepositoryEntry>）にトレイトを実装
 impl AptRepositoryEntryVec for Vec<AptRepositoryEntry> {
-    fn in_release_targets(&self) -> Vec<(String, String)> {
+    fn in_release_targets(&self) -> Vec<super::InReleaseTarget> {
         // Base64エンジンは使用しないが、他の箇所で使う可能性を考慮して残しておく
         let _base64_engine = base64::engine::general_purpose::STANDARD;
         
         // 重複を避けるためにHashSetを使用
-        let mut unique_urls = HashSet::new();
+        let mut unique_targets = HashSet::new();
 
         self.iter()
             // 1. 有効なエントリのみを対象とする
             .filter(|entry| entry.enabled)
             // 2. 各エントリを、複数のSuiteに対応するInRelease URLのストリームに展開する
             .for_each(|entry| {
+                let signed_by_key = entry.signed_by.clone(); // Clone the key info
                 entry.suites.iter().for_each(|suite| {
                     // InReleaseファイルの標準的なパス形式: URI/dists/SUITE/InRelease
                     let url = format!("{}/dists/{}/InRelease", entry.uris, suite);
-                    unique_urls.insert(url);
+                    unique_targets.insert((url, signed_by_key.clone())); // Store URL and key info
                 });
             });
 
         // 3. 一意のURLに対して、ローカル保存ファイル名を生成する
-        unique_urls.into_iter().map(|url| {
+        unique_targets.into_iter().map(|(url, signed_by_key)| {
             // ローカルファイル名を作成 (ユーザー要望の形式: archive.ubuntu.com_ubuntu_dists_suite_InRelease)
             let mut local_name = url.clone();
 
@@ -54,7 +56,11 @@ impl AptRepositoryEntryVec for Vec<AptRepositoryEntry> {
             // 4. 拡張子 "_InRelease" を再付加
             let local_filename = format!("{}_InRelease", filename_body);
 
-            (url, local_filename)
+            super::InReleaseTarget {
+                url,
+                local_path: PathBuf::from(local_filename),
+                signed_by_key,
+            }
         }).collect()
     }
 }

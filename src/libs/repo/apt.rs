@@ -1,11 +1,18 @@
 mod parser;
 mod release;
 mod vec_traits;
-use std::{
-    collections::HashMap,
-    path::{Path, PathBuf},
-    process::Command,
-};
+mod packages_parser; // Restored
+use crate::libs::repo::apt::release::AptReleaseInfo;
+use futures::future::join_all;
+use reqwest;
+use serde_yaml; // Add this
+use sha2::{Digest, Sha256};
+use std::path::Path;
+use std::{collections::HashMap, path::PathBuf, process::Command};
+use tokio::{
+    fs::{self, File},
+    io::{AsyncWriteExt, AsyncReadExt},
+}; // Add this
 
 use crate::{libs::repo::apt::vec_traits::AptRepositoryEntryVec, modules::error::UpmError};
 use base64::Engine;
@@ -18,8 +25,24 @@ pub enum AptRepositoryType {
     DebSrc,
 }
 use colored::*;
+use serde::{Deserialize, Serialize};
 use std::fmt;
 use tokio::task;
+
+#[derive(Debug, Clone)]
+pub struct InReleaseTarget {
+    pub url: String,
+    pub local_path: PathBuf,
+    pub signed_by_key: AptRepositoryKeyInfo,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PackagesDownloadTarget {
+    pub url: String,
+    pub local_path: PathBuf,
+    pub hash_type: String, // e.g., "sha256", "md5"
+    pub expected_hash: Vec<u8>,
+}
 // coloredクレートのColorizeトレイトをスコープに持ち込む
 
 // AptRepositoryTypeにDisplayを実装（coloredを使用しない部分）
@@ -119,7 +142,13 @@ impl fmt::Display for AptRepositoryEntry {
                     writeln!(
                         f,
                         "  {}",
-                        format!("{}{}{}", start.red().italic(), "...".dimmed().italic(),end.red().italic()).to_string() // 色はPathに合わせて赤に
+                        format!(
+                            "{}{}{}",
+                            start.red().italic(),
+                            "...".dimmed().italic(),
+                            end.red().italic()
+                        )
+                        .to_string() // 色はPathに合わせて赤に
                     )?;
                 } else {
                     // 文字列が短い場合は全体を表示
@@ -165,7 +194,7 @@ impl TryFrom<&str> for AptRepositoryType {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 
 pub enum AptRepositoryKeyInfo {
     Path(PathBuf),
@@ -340,10 +369,111 @@ impl AptRepositoryEntry {
     }
 }
 
-/// APTリポジトリのインデックスを非同期に更新する
+async fn download_file(url: &str, path: &Path) -> Result<(), UpmError> {
+    let response = reqwest::get(url).await?;
+    let content = response.bytes().await?;
+
+    // 親ディレクトリが存在しない場合は作成
+    if let Some(parent) = path.parent() {
+        tokio::fs::create_dir_all(parent).await?;
+    }
+
+    let mut file = tokio::fs::File::create(path).await?;
+    file.write_all(&content).await?;
+    Ok(())
+}
+
+// APTリポジトリのインデックスを非同期に更新する
 pub async fn update() -> Result<(), UpmError> {
-    let in_release_cache_dir=Path::new("/var/lib/upm/lists");
-    let entries=AptRepositoryEntry::load_all().await?;
-    let in_release_targets=entries.in_release_targets();
+    let in_release_cache_dir = PathBuf::from("/var/lib/upm/caches/lists/releases");
+    let packages_cache_dir = PathBuf::from("/var/lib/upm/caches/lists/packages");
+    let package_list_dir = PathBuf::from("/var/lib/upm/repo/packages");
+
+    // キャッシュディレクトリとパッケージリストディレクトリが存在することを確認
+    tokio::fs::create_dir_all(&in_release_cache_dir).await?;
+    tokio::fs::create_dir_all(&packages_cache_dir).await?;
+    tokio::fs::create_dir_all(&package_list_dir).await?;
+
+    let entries = AptRepositoryEntry::load_all().await?;
+    let in_release_targets = entries.in_release_targets();
+
+    let mut all_packages_targets: Vec<PackagesDownloadTarget> = Vec::new();
+
+    // 1. InReleaseファイルをダウンロードし、検証する
+    let in_release_processing_tasks = in_release_targets.into_iter().map(|target| {
+        let in_release_cache_dir = in_release_cache_dir.clone();
+        let packages_cache_dir=packages_cache_dir.clone();
+        async move {
+            let local_path = in_release_cache_dir.join(&target.local_path);
+
+            // InReleaseファイルのダウンロード
+            download_file(&target.url, &local_path).await?;
+
+            // ダウンロードしたファイルの読み込みとパース
+            let content = fs::read_to_string(&local_path).await?;
+            let in_release_info = release::AptInReleaseInfo::parse(&content)?;
+
+            // TODO: ここで署名の検証を行う (現在はCRC24のみ)
+            // if !verify_signature(&local_path, &in_release_info.signature, &target.signed_by_key).await? {
+            //     return Err(UpmError::ParseError(format!("Signature verification failed for {}", target.url)));
+            // }
+
+            // PackagesDownloadTargetの抽出
+            let apt_release_info: AptReleaseInfo = in_release_info.release;
+            Ok(apt_release_info.get_packages_download_targets(
+                &target.url,
+                &packages_cache_dir,
+            ))
+        }
+    });
+
+    let results: Vec<Result<Vec<PackagesDownloadTarget>, UpmError>> =
+        join_all(in_release_processing_tasks).await;
+
+    for result in results {
+        match result {
+            Ok(targets) => all_packages_targets.extend(targets),
+            Err(e) => eprintln!("Error processing InRelease file: {}", e), // エラーは記録するが処理は続行
+        }
+    }
+
+    // 2. Packagesファイルをダウンロードし、パースし、保存する
+    let package_processing_tasks = all_packages_targets.into_iter().map(|target| {
+        let package_list_dir = package_list_dir.clone();
+        async move {
+            let local_path = target.local_path.clone();
+
+            // Packagesファイルのダウンロード
+            download_file(&target.url, &local_path).await?;
+
+            // ハッシュ値の検証
+            let mut file = File::open(&local_path).await?;
+            let mut hasher = Sha256::new();
+            let mut buffer = Vec::new();
+            file.read_to_end(&mut buffer).await?;
+            hasher.update(&buffer);
+            let hash_result = hasher.finalize().to_vec();
+
+            if hash_result != target.expected_hash {
+                return Err(UpmError::ParseError(format!(
+                    "Hash mismatch for Packages file {}. Expected: {:?}, Actual: {:?}",
+                    target.url, target.expected_hash, hash_result
+                )));
+            }
+
+            let packages = packages_parser::parse_packages_file(&local_path)?;
+            for pkg in packages {
+                let pkg_file_name = format!("{}_{}.yaml", pkg.package, pkg.version);
+                let pkg_save_path = package_list_dir.join(pkg_file_name);
+                let yaml_content = serde_yaml::to_string(&pkg)?;
+                tokio::fs::write(&pkg_save_path, yaml_content.as_bytes()).await?;
+            }
+
+            Ok(())
+        }
+    });
+
+    let _ = join_all(package_processing_tasks).await;
+
     Ok(())
 }
