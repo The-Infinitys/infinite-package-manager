@@ -3,6 +3,9 @@ Version: 2.7.7
 Architecture: amd64
 Installed-Size: 5293
 Maintainer: Debian APT Team <deity@lists.debian.org>
+Priority: important
+Section: base
+Source: apt-source (2.7.7)
 Original-Maintainer: APT Development Team <deity@lists.debian.org>
 Description: commandline package manager
  This package provides commandline tools for searching, downloading, and

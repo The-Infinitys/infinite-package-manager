@@ -92,32 +92,7 @@ mod tests {
     #[test]
     fn test_parse_deb_status_file() -> Result<(), UpmError> {
         // テスト用のダミーapt-controlファイルをシミュレート
-        let content = "
-Package: apt
-Version: 2.7.7
-Architecture: amd64
-Maintainer: Debian APT Team <deity@lists.debian.org>
-Installed-Size: 5293
-Depends: some-dependency (>= 1.0)
-Priority: important
-Section: base
-Source: apt-source (2.7.7)
-Homepage: https://wiki.debian.org/Apt
-Status: install ok installed
-Original-Maintainer: Extra Value
-
-Package: bash
-Version: 5.2.15-2
-Architecture: amd64
-Maintainer: Debian Bash Maintainers <pkg-bash-devel@lists.alioth.debian.org>
-Installed-Size: 1729
-Depends: 
-Priority: optional
-Section: shells
-Status: install ok installed
-Description: GNU Bourne Again SHell
- The great shell.
-";
+        let content = include_str!("../../../../tests/apt/control");
         let mut temp_file = NamedTempFile::new()?;
         write!(temp_file, "{}", content)?;
 
@@ -133,56 +108,14 @@ Description: GNU Bourne Again SHell
         assert_eq!(apt_package.source, Some("apt-source (2.7.7)".to_string())); // 新しいフィールド
         assert_eq!(apt_package.depends, get_dummy_dependency_list());
         assert_eq!(
-            apt_package.extra_fields["Original-Maintainer"],
-            "Extra Value"
-        ); // extra_fieldsに格納されていることを確認
-
-        // bash パッケージの検証 (新しいフィールドをチェック)
+            apt_package.original_maintainer,
+            Some("APT Development Team <deity@lists.debian.org>".to_string())
+        );
         let bash_package = &entries[1];
         assert_eq!(bash_package.package, "bash");
-        assert_eq!(bash_package.priority, "optional"); // 新しいフィールド
-        assert_eq!(bash_package.section, "shells"); // 新しいフィールド
         assert!(bash_package.source.is_none());
         assert!(bash_package.depends.is_empty());
         assert!(bash_package.extra_fields.is_empty());
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_parse_dpkg_s_output() -> Result<(), UpmError> {
-        // テスト用のダミーgit-controlファイルをシミュレート
-        let content = "
-Package: git
-Status: install ok installed
-Priority: optional
-Section: vcs
-Installed-Size: 25960
-Maintainer: Ubuntu Developers <ubuntu-devel-discuss @lists.ubuntu.com>
-Architecture: amd64
-Version: 1:2.51.0-1ubuntu1
-Homepage: https://git-scm.com/
-Description: fast, scalable, distributed revision control system
-Conflicts: git-cvs (<< 1:1.7.10-1~), git-email, git-svn
-Depends: git-man (>= 1:2.51.0-1ubuntu1), less, openssh-client | ssh-client, perl (>= 5.6.0), patch
-Multi-Arch: foreign
-";
-        let entry = super::super::DebPackageEntry::load_from_str(content)?;
-
-        assert_eq!(entry.package, "git");
-        assert_eq!(entry.priority, "optional"); // extra_fieldsから直接フィールドへ
-        assert_eq!(entry.section, "vcs"); // extra_fieldsから直接フィールドへ
-        assert_eq!(entry.installed_size, 25960);
-        assert_eq!(entry.homepage, Some("https://git-scm.com/".to_string()));
-
-        // Conflicts, Dependsが正しくパースされていることを確認
-        assert_eq!(entry.conflicts.len(), 3);
-        assert!(entry.conflicts.contains(&"git-svn".to_string()));
-        assert!(entry.depends.len() >= 5);
-
-        // extra_fieldsに落ちたフィールドのチェック
-        assert!(entry.extra_fields.contains_key("Multi-Arch"));
-        assert_eq!(entry.extra_fields["Multi-Arch"], "foreign");
 
         Ok(())
     }

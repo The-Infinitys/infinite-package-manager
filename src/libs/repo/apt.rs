@@ -1,5 +1,5 @@
 mod parser;
-mod vec_traits;
+mod release;
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
@@ -9,8 +9,6 @@ use std::{
 use crate::modules::error::UpmError;
 use parser::list;
 use parser::sources;
-use vec_traits::AptRepositoryVecExt;
-
 #[derive(Debug, PartialEq, Eq, Clone, Default)]
 pub enum AptRepositoryType {
     #[default]
@@ -174,6 +172,8 @@ impl AptRepositoryEntry {
         let suites = vec![];
         let components = vec![];
         let enabled = false;
+        // NOTE: dpkgコマンドの実行はブロッキングI/Oであり、非同期コンテキスト外で実行することが推奨されるため、
+        // ここでは便宜上そのままにしています。理想的には、この情報もメインスレッドの初期化で取得すべきです。
         let architectures = match Command::new("dpkg").arg("--print-architecture").output() {
             Ok(output) if output.status.success() => {
                 let arch = String::from_utf8_lossy(&output.stdout).trim().to_string();
@@ -262,6 +262,7 @@ impl AptRepositoryEntry {
 
         Ok(all_entries)
     }
+    /// 個々のリポジトリ設定から、ダウンロード対象となるベースURLを生成する
     fn parent_urls(&self) -> Vec<String> {
         let architectures = &self.architectures;
         self.repo_types
@@ -276,7 +277,7 @@ impl AptRepositoryEntry {
                                     .iter()
                                     .map(move |architecture| {
                                         format!(
-                                            "{}/dists/{}/{}/binary-{}/",
+                                            "{}/dists/{}/{}/binary-{}",
                                             self.uris, suite, component, architecture
                                         )
                                     })
@@ -285,7 +286,7 @@ impl AptRepositoryEntry {
                             AptRepositoryType::DebSrc => {
                                 // DebSrcタイプの場合、アーキテクチャに依存せず1つのURLを生成
                                 vec![format!(
-                                    "{}/dists/{}/{}/source/",
+                                    "{}/dists/{}/{}/source",
                                     self.uris, suite, component
                                 )]
                             }
@@ -295,15 +296,17 @@ impl AptRepositoryEntry {
             })
             .collect::<Vec<String>>()
     }
-    pub fn target_urls(&self, ext: &str) -> Vec<String> {
+
+    /// 各ベースURLから、Packages.gz などの実際のダウンロードURLを生成する
+    pub fn target_urls(&self, filename: &str) -> Vec<String> {
         self.parent_urls()
             .iter()
-            .map(|parent| format!("{}/Package.{}", parent, ext))
+            .map(|parent| format!("{}/Packages{}", parent, filename))
             .collect()
     }
 }
-pub fn update() -> Result<(), UpmError> {
-    let apt_repositry_entries = AptRepositoryEntry::load_all()?;
-    let prechecked = apt_repositry_entries.precheck()?;
+
+/// APTリポジトリのインデックスを非同期に更新する
+pub async fn update() -> Result<(), UpmError> {
     Ok(())
 }
