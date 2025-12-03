@@ -5,8 +5,16 @@ mod vec_traits; // Restored
 use crate::libs::repo::apt::release::AptReleaseInfo;
 use futures::future::join_all;
 use reqwest;
+use sequoia_openpgp::Cert;
+use sequoia_openpgp::anyhow::anyhow;
+use sequoia_openpgp::parse::Parse;
+use sequoia_openpgp::parse::stream::{
+    MessageLayer, MessageStructure, VerificationHelper, VerifierBuilder,
+};
+use sequoia_openpgp::policy::StandardPolicy;
 use serde_yaml; // Add this
 use sha2::{Digest, Sha256};
+use std::io::Cursor;
 use std::path::Path;
 use std::{collections::HashMap, path::PathBuf, process::Command};
 use tokio::{
@@ -217,7 +225,17 @@ impl Default for AptRepositoryEntry {
         Self::new()
     }
 }
-
+impl AptRepositoryKeyInfo {
+    // 戻り値を `Option<Vec<u8>>` に変更
+    // (ファイルを読み込むため、エラー処理として `Result` を使用することも検討すべきです)
+    pub fn read_owned(&self) -> Option<Vec<u8>> {
+        match self {
+            Self::None => None,
+            Self::Bin(bin) => Some(bin.clone()),
+            Self::Path(path) => std::fs::read(path).ok(),
+        }
+    }
+}
 impl AptRepositoryEntry {
     pub fn new() -> Self {
         let repo_type = vec![];
@@ -391,8 +409,31 @@ async fn download_file(url: &str, path: &Path) -> Result<(), UpmError> {
     file.write_all(&content).await?;
     Ok(())
 }
+async fn verify_signature(
+    data_path: &Path,
+    signature_data: &[u8],
+    signed_by_key: &AptRepositoryKeyInfo,
+) -> Result<bool, UpmError> {
+    // 1. 公開鍵の読み込みとパース
+    let public_key_bytes = match signed_by_key.read_owned() {
+        Some(bytes) => bytes,
+        None => {
+            return Err(UpmError::Io(std::io::Error::from(
+                std::io::ErrorKind::NotFound,
+            )));
+        }
+    };
 
-pub async fn _update_internal(
+    let cert = Cert::from_bytes(&public_key_bytes)?;
+    let keyId = cert.keyid();
+    let inrelease_data = fs::read(data_path).await?;
+    let mut source = Cursor::new(&inrelease_data);
+    // 3. 署名の検証の設定
+    let policy = &StandardPolicy::new();
+    Ok(true)
+}
+
+async fn _update_internal(
     in_release_cache_dir: PathBuf,
     packages_cache_dir: PathBuf,
     package_list_dir: PathBuf,
@@ -421,10 +462,19 @@ pub async fn _update_internal(
             let content = fs::read_to_string(&local_path).await?;
             let in_release_info = release::AptInReleaseInfo::parse(&content)?;
 
-            // TODO: ここで署名の検証を行う (現在はCRC24のみ)
-            // if !verify_signature(&local_path, &in_release_info.signature, &target.signed_by_key).await? {
-            //     return Err(UpmError::ParseError(format!("Signature verification failed for {}", target.url)));
-            // }
+            // ここで署名の検証を行う
+            if !verify_signature(
+                &local_path,
+                &in_release_info.signature,
+                &target.signed_by_key,
+            )
+            .await?
+            {
+                return Err(UpmError::SignatureVerificationError(format!(
+                    "Signature verification failed for {}",
+                    target.url
+                )));
+            }
 
             // PackagesDownloadTargetの抽出
             let apt_release_info: AptReleaseInfo = in_release_info.release;

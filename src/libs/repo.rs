@@ -60,11 +60,7 @@ pub async fn print_list() -> Result<(), UpmError> {
     _print_list_internal(apt_sources_dir, apt_sources_list_dir).await
 }
 
-pub async fn _update_internal(
-    in_release_cache_dir: PathBuf,
-    packages_cache_dir: PathBuf,
-    package_list_dir: PathBuf,
-) -> Result<(), UpmError> {
+pub async fn update() -> Result<(), UpmError> {
     let output = Command::new("id").arg("-u").output()?;
     let uid = String::from_utf8_lossy(&output.stdout)
         .trim()
@@ -77,15 +73,8 @@ pub async fn _update_internal(
 
     match system::PackageManager::get() {
         PackageManager::Dpkg => {
-            apt::_update_internal(in_release_cache_dir, packages_cache_dir, package_list_dir).await
+            apt::update().await
         }
         _ => Err(UpmError::Unsupported),
     }
-}
-
-pub async fn update() -> Result<(), UpmError> {
-    let in_release_cache_dir = PathBuf::from("/var/lib/upm/caches/lists/releases");
-    let packages_cache_dir = PathBuf::from("/var/lib/upm/caches/lists/packages");
-    let package_list_dir = PathBuf::from("/var/lib/upm/repo/packages");
-    _update_internal(in_release_cache_dir, packages_cache_dir, package_list_dir).await
 }

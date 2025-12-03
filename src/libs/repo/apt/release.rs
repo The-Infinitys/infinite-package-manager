@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     path::{Path, PathBuf},
     str::FromStr,
 };
@@ -7,11 +8,22 @@ use base64::Engine;
 use serde::{Deserialize, Serialize};
 
 use crate::modules::error::UpmError;
-
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct InReleaseHash {
+    hash_type: HashType,
+    value: Vec<u8>,
+}
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub enum HashType {
+    Sha(u32),
+    #[default]
+    Md5sum,
+}
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AptInReleaseInfo {
     pub signature: Vec<u8>,
     pub release: AptReleaseInfo,
+    pub hash: InReleaseHash,
 }
 impl AptInReleaseInfo {
     pub fn parse(content: &str) -> Result<Self, UpmError> {
@@ -147,6 +159,7 @@ pub struct AptReleaseInfo {
     pub md5sum: Vec<FileHashMetaData>,
     pub sha1: Vec<FileHashMetaData>,
     pub sha256: Vec<FileHashMetaData>,
+    pub fields: HashMap<String, String>,
 }
 
 impl AptReleaseInfo {
@@ -216,7 +229,9 @@ impl AptReleaseInfo {
                     "SHA256" => {
                         release_info.sha256 = parse_hash_meta(value)?;
                     }
-                    _ => {}
+                    _ => {
+                        release_info.fields.insert(key, value.to_string());
+                    }
                 }
             }
         }

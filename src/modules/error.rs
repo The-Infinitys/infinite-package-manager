@@ -34,6 +34,10 @@ pub enum UpmError {
     SerdeYaml(#[from] serde_yaml::Error),
     #[error("www request error: {0}")]
     WwwReqestError(#[from] reqwest::Error),
+    #[error("Signature Verification Error: {0}")]
+    SignatureVerificationError(String),
+    #[error("Verifycation Error: {0}")]
+    VerifycationError(#[from] sequoia_openpgp::anyhow::Error),
 }
 
 impl UpmError {
@@ -56,6 +60,8 @@ impl UpmError {
             UpmError::AsyncRuntimeJoinError(_) => "AsyncRuntimeJoinError",
             UpmError::SerdeYaml(_) => "SerdeYaml",
             UpmError::WwwReqestError(_) => "WwwReqestError",
+            UpmError::SignatureVerificationError(_) => "SignatureVerificationError",
+            UpmError::VerifycationError(_) => "VerifycationError",
         };
         // Kindは必ず改行付きで出力します
         writeln!(f, "  {}: {}", kind_label, kind_value.yellow())
@@ -122,6 +128,12 @@ impl UpmError {
             }
             UpmError::WwwReqestError(e) => {
                 write!(f, "  {}: \"{}\"", message_label, e)
+            }
+            UpmError::SignatureVerificationError(msg) => {
+                write!(f, "  {}: \"{}\"", message_label, msg)
+            }
+            UpmError::VerifycationError(error) => {
+                write!(f, "  {}: \"{}\"", message_label, error)
             }
         }
     }
