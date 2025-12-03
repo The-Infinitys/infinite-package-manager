@@ -86,12 +86,12 @@ pub enum PkgCommands {
 }
 
 impl Cli {
-    pub fn execute(&self) -> Result<(), UpmError> {
+    pub async fn execute(&self) -> Result<(), UpmError> {
         match &self.subcommand {
             SubCommands::Repo(repo_args) => match &repo_args.command {
                 RepoCommands::List => {
                     println!("Listing configured repositories:");
-                    repo::print_list()
+                    repo::print_list().await
                 }
                 RepoCommands::Add {
                     name,
@@ -118,7 +118,7 @@ impl Cli {
                 }
                 RepoCommands::Update => {
                     println!("Updating repository lists...");
-                    repo::update()
+                    repo::update().await
                 }
             },
             SubCommands::Pkg(pkg_args) => match &pkg_args.command {

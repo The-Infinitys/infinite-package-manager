@@ -30,7 +30,7 @@ impl RepositoryEntry {
     }
 }
 
-pub fn print_list() -> Result<(), UpmError> {
+pub async fn print_list() -> Result<(), UpmError> {
     let entries = RepositoryEntry::load()?;
     for entry in entries {
         println!("{}", entry);
@@ -38,7 +38,7 @@ pub fn print_list() -> Result<(), UpmError> {
     Ok(())
 }
 
-pub fn update() -> Result<(), UpmError> {
+pub async fn update() -> Result<(), UpmError> {
     let output = Command::new("id").arg("-u").output()?;
     let uid = String::from_utf8_lossy(&output.stdout)
         .trim()
