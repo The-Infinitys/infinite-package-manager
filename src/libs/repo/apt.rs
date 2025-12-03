@@ -17,6 +17,7 @@ pub enum AptRepositoryType {
 }
 use colored::*;
 use std::fmt;
+use tokio::task;
 // coloredクレートのColorizeトレイトをスコープに持ち込む
 
 // AptRepositoryTypeにDisplayを実装（coloredを使用しない部分）
@@ -214,53 +215,62 @@ impl AptRepositoryEntry {
             None => Err(UpmError::ParseExtensionError("None".to_string())),
         }
     }
-    pub fn load_all() -> Result<Vec<Self>, UpmError> {
-        let parent_file = Path::new("/etc/apt/sources.list");
-        let parent_dir = Path::new("/etc/apt/sources.list.d");
+    pub async fn load_all() -> Result<Vec<Self>, UpmError> {
+        let parent_file = PathBuf::from("/etc/apt/sources.list");
+        let parent_dir = PathBuf::from("/etc/apt/sources.list.d");
 
-        let mut all_entries: Vec<Self> = Vec::new();
+        // 複数の非同期タスクの結果を格納するためのベクタ
+        let mut tasks = Vec::new();
 
-        // 1. /etc/apt/sources.list の読み込み
-        // ファイルが存在し、読み込みに成功した場合のみ処理
+        // 1. /etc/apt/sources.list の読み込みタスクを生成
         if parent_file.exists() {
-            match AptRepositoryEntry::load(parent_file) {
-                Ok(entries) => all_entries.extend(entries),
-                // sources.listのパースエラーは致命的ではない場合があるが、ここではエラーを返す
-                Err(e) => return Err(e),
-            }
+            let file_path = parent_file.clone();
+            tasks.push(task::spawn(async move {
+                task::spawn_blocking(move || Self::load(&file_path)).await
+            }));
         }
 
-        // 2. /etc/apt/sources.list.d/ ディレクトリ内のファイルの読み込み
-        if parent_dir.exists() && parent_dir.is_dir() {
-            // ディレクトリ内のエントリを走査
-            for entry in std::fs::read_dir(parent_dir)? {
-                let entry = entry?;
-                let path = entry.path();
+        // 2. /etc/apt/sources.list.d/ ディレクトリ内のファイルの読み込みタスクを生成
+        if parent_dir.is_dir() {
+            match tokio::fs::read_dir(parent_dir).await {
+                Ok(mut dir) => {
+                    while let Some(entry) = dir.next_entry().await? {
+                        let path = entry.path();
 
-                // ファイルであり、適切な拡張子を持つかチェック
-                // .list または .sources で終わるファイルのみを対象とするのが一般的です
-                if path.is_file() {
-                    let ext_is_valid = path
-                        .extension()
-                        .map(|ext| {
-                            let s = ext.to_string_lossy();
-                            s == "list" || s == "sources"
-                        })
-                        .unwrap_or(false);
+                        // ファイルであるか、拡張子が適切かのチェック
+                        if path.is_file() {
+                            let ext_is_valid = path
+                                .extension()
+                                .map(|ext| {
+                                    let s = ext.to_string_lossy();
+                                    s == "list" || s == "sources"
+                                })
+                                .unwrap_or(false);
 
-                    if ext_is_valid {
-                        // 個々のファイルを読み込み、成功したエントリを追加
-                        match AptRepositoryEntry::load(&path) {
-                            Ok(entries) => all_entries.extend(entries),
-                            // 個別のファイルのエラーはスキップせずにエラーを返す設計にする
-                            Err(e) => return Err(e),
+                            if ext_is_valid {
+                                // 各ファイルのパース処理を独立した非同期タスクとして登録
+                                tasks.push(task::spawn(async move {
+                                    task::spawn_blocking(move || AptRepositoryEntry::load(&path))
+                                        .await
+                                }));
+                            }
                         }
                     }
                 }
+                // ディレクトリが存在しないか読み込みエラーの場合は、エラーを返すかスキップ
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => { /* スキップ */ }
+                Err(e) => return Err(e.into()), // その他のI/Oエラーは返す
             }
         }
 
-        Ok(all_entries)
+        let results = futures::future::join_all(tasks)
+            .await
+            .into_iter()
+            .map(|r| r?)
+            .map(|r| r?)
+            .map(|r| r);
+        let results:Vec<Self>=results.collect();
+        Ok(Vec::new())
     }
     /// 個々のリポジトリ設定から、ダウンロード対象となるベースURLを生成する
     fn parent_urls(&self) -> Vec<String> {

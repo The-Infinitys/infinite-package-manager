@@ -19,10 +19,10 @@ impl Display for RepositoryEntry {
     }
 }
 impl RepositoryEntry {
-    pub fn load() -> Result<Vec<Self>, UpmError> {
+    pub async fn load() -> Result<Vec<Self>, UpmError> {
         match system::PackageManager::get() {
             PackageManager::Dpkg => {
-                let entries = apt::AptRepositoryEntry::load_all()?;
+                let entries = apt::AptRepositoryEntry::load_all().await?;
                 Ok(entries.into_iter().map(RepositoryEntry::Apt).collect())
             }
             _ => Err(UpmError::Unsupported),
@@ -31,7 +31,7 @@ impl RepositoryEntry {
 }
 
 pub async fn print_list() -> Result<(), UpmError> {
-    let entries = RepositoryEntry::load()?;
+    let entries = RepositoryEntry::load().await?;
     for entry in entries {
         println!("{}", entry);
     }

@@ -28,6 +28,8 @@ pub enum UpmError {
     // 不足していたParseIntErrorを追加
     #[error("Parse Integer Error: {0}")]
     ParseIntError(#[from] std::num::ParseIntError),
+    #[error("Async Runtime Join Error: {0}")]
+    AsyncRuntimeJoinError(#[from] tokio::task::JoinError),
 }
 
 impl UpmError {
@@ -47,6 +49,7 @@ impl UpmError {
             UpmError::Unsupported => "Unsupported",
             UpmError::Permission => "Permission",
             UpmError::ParseIntError(_) => "ParseIntError",
+            UpmError::AsyncRuntimeJoinError(_) => "AsyncRuntimeJoinError",
         };
         // Kindは必ず改行付きで出力します
         writeln!(f, "  {}: {}", kind_label, kind_value.yellow())
@@ -103,6 +106,9 @@ impl UpmError {
                 )
             }
             UpmError::ParseIntError(e) => {
+                write!(f, "  {}: \"{}\"", message_label, e)
+            }
+            UpmError::AsyncRuntimeJoinError(e) => {
                 write!(f, "  {}: \"{}\"", message_label, e)
             }
         }
