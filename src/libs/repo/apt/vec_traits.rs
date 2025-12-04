@@ -13,12 +13,7 @@ pub trait AptRepositoryEntryVec {
 // AptRepositoryEntryのベクタ（Vec<AptRepositoryEntry>）にトレイトを実装
 impl AptRepositoryEntryVec for Vec<AptRepositoryEntry> {
     fn in_release_targets(&self) -> Vec<super::InReleaseTarget> {
-        // Base64エンジンは使用しないが、他の箇所で使う可能性を考慮して残しておく
-        let _base64_engine = base64::engine::general_purpose::STANDARD;
-
-        // 重複を避けるためにHashSetを使用
         let mut unique_targets = HashSet::new();
-
         self.iter()
             // 1. 有効なエントリのみを対象とする
             .filter(|entry| entry.enabled)

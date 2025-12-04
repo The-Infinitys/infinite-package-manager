@@ -5,16 +5,9 @@ mod vec_traits; // Restored
 use crate::libs::repo::apt::release::AptReleaseInfo;
 use futures::future::join_all;
 use reqwest;
-use sequoia_openpgp::Cert;
-use sequoia_openpgp::anyhow::anyhow;
-use sequoia_openpgp::parse::Parse;
-use sequoia_openpgp::parse::stream::{
-    MessageLayer, MessageStructure, VerificationHelper, VerifierBuilder,
-};
-use sequoia_openpgp::policy::StandardPolicy;
 use serde_yaml; // Add this
 use sha2::{Digest, Sha256};
-use std::io::Cursor;
+// use std::io::Cursor; // 削除
 use std::path::Path;
 use std::{collections::HashMap, path::PathBuf, process::Command};
 use tokio::{
@@ -410,27 +403,17 @@ async fn download_file(url: &str, path: &Path) -> Result<(), UpmError> {
     Ok(())
 }
 async fn verify_signature(
-    data_path: &Path,
-    signature_data: &[u8],
-    signed_by_key: &AptRepositoryKeyInfo,
+    _data_path: &Path, // 署名対象のファイルパス
+    _signature_data: &[u8], // 署名データ (InReleaseファイル内に含まれる)
+    _signed_by_key: &AptRepositoryKeyInfo, // 公開鍵情報
 ) -> Result<bool, UpmError> {
     // 1. 公開鍵の読み込みとパース
-    let public_key_bytes = match signed_by_key.read_owned() {
-        Some(bytes) => bytes,
-        None => {
-            return Err(UpmError::Io(std::io::Error::from(
-                std::io::ErrorKind::NotFound,
-            )));
-        }
-    };
-
-    let cert = Cert::from_bytes(&public_key_bytes)?;
-    let keyId = cert.keyid();
-    let inrelease_data = fs::read(data_path).await?;
-    let mut source = Cursor::new(&inrelease_data);
-    // 3. 署名の検証の設定
-    let policy = &StandardPolicy::new();
-    Ok(true)
+    // 2. 署名対象データ（InReleaseファイルのRelease部分）の取得
+    // 3. 署名の検証の設定と実行
+    
+    // sequoia-openpgpを削除したため、署名検証処理全体をtodo!で置き換え
+    todo!("署名検証のロジックを実装する必要があります（sequoia-openpgpの代わりに別のライブラリを使用するなど）");
+    // Ok(true)
 }
 
 async fn _update_internal(
@@ -538,6 +521,5 @@ pub async fn update() -> Result<(), UpmError> {
     let in_release_cache_dir = PathBuf::from("/var/lib/upm/caches/lists/releases");
     let packages_cache_dir = PathBuf::from("/var/lib/upm/caches/lists/packages");
     let package_list_dir = PathBuf::from("/var/lib/upm/repo/packages");
-
     _update_internal(in_release_cache_dir, packages_cache_dir, package_list_dir).await
 }
