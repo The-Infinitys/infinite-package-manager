@@ -1,0 +1,50 @@
+Origin: Ubuntu
+Label: Ubuntu
+Suite: resolute
+Version: 26.04
+Codename: resolute
+Date: Wed, 03 Dec 2025  3:24:58 UTC
+Architectures: amd64 amd64v3 arm64 armhf i386 ppc64el riscv64 s390x
+Components: main restricted universe multiverse
+Description: Ubuntu Resolute 26.04
+MD5Sum:
+ 08ec48cf2fcce042c2d0e1254f0c292d        893035075 Contents-amd64
+ b07fdb0c551144bd5223912f7bafcff1         55564991 Contents-amd64.gz
+ 59d2a5534172f840057699c0e031e034        882720103 Contents-amd64v3
+ 09adce4ad477d79e0f160a09d2c77ff0         54941982 Contents-amd64v3.gz
+ 24ea326d8a8fcfb5c09499bb48611465        902173101 Contents-arm64
+ ddb42a10abde79f9b58d98f52d39d59b         56049321 Contents-arm64.gz
+ 807631c58500c2f5c725eeb72fcc7ba5        828528746 Contents-armhf
+ 181c7769fae7d30cc34f9228ac0c8205         51919432 Contents-armhf.gz
+ 3b5a4ca64943ea98032b0eec3d454c23        737163757 Contents-i386
+ ce43c2e21fc61468db839ce12905acad              103 universe/source/Release
+ 77df89b7fe14820b2b1295d134a90620         86378652 universe/source/Sources
+ 9de16902a05fb6ee77564523dbd3f97d         26312964 universe/source/Sources.gz
+ edd0db09a95e40372d21fc3f440cea14         21370628 universe/source/Sources.xz
+SHA1:
+ b2f76593080a6a556c257cb7ccb077368060525b          3517636 universe/dep11/icons-48x48.tar.gz
+ b38885d6cc46cfa51e08a106f9e66d30081fe57e           103424 universe/dep11/icons-48x48@2.tar
+ 4a35c47d871baf9b21e12b7be197418eeb90acbd            75009 universe/dep11/icons-48x48@2.tar.gz
+ 2628cb0ff47d144738e574d3e9a34370af4f9b60          9459200 universe/dep11/icons-64x64.tar
+ dce87d03bd285710c256ab1ba9a8af4cdeec8612          7311745 universe/dep11/icons-64x64.tar.gz
+ 1d9115bea532612a767945d6580a912e33006ccc           141312 universe/dep11/icons-64x64@2.tar
+ 03d706000cef1800c4fd44a9e478bab9a5ac0cb7           104566 universe/dep11/icons-64x64@2.tar.gz
+ 632302170ef43d1ddbd7bd656887bbd6d77434f2         33067345 universe/i18n/Translation-en
+ cd7f78002c6746eeca7a9745c94e59bdc6187425          8925127 universe/i18n/Translation-en.gz
+ 266611a38462ae472b01322ddb7e590ac391aebf          6321256 universe/i18n/Translation-en.xz
+ 1d0bea9e23a9e6a6b7f2aa819f8155b5d373a8f3              103 universe/source/Release
+ 5087a06e705947e10a2dc7d2a00668d45292d2dd         86378652 universe/source/Sources
+ 44a4a2a2e60325b95fb38fa8f94059abc2119fc7         26312964 universe/source/Sources.gz
+ 1522a48bd46ece3a2f87401be89b1f11c545d7e6         21370628 universe/source/Sources.xz
+SHA256:
+ bf5ebe8ecbe94e0982e5cf54481a65ad67b168717a99f917c74f9aebdb467d97        893035075 Contents-amd64
+ dbc8f6445383bfcedfa94653fbe2b698623478df4b46a829f121a51470d29727         55564991 Contents-amd64.gz
+ bc3766a2d49abf466f15c09cc6e9739abc38a50fc86c1f53d852c77fe41e800c        882720103 Contents-amd64v3
+ 4cb8ba6c318a0640683563d3842750e80063d67e4613591d4f8b78ad3716150a         54941982 Contents-amd64v3.gz
+ 2a07e764cdc369b132ad46dddf2a180f7b24cefc021cc9e8d28a4850a23cad92          8925127 universe/i18n/Translation-en.gz
+ 1b306167d6aab6af5dce0c8101997c70ac89b3da837fe9d7549ee0715a444304          6321256 universe/i18n/Translation-en.xz
+ 94734234147165ef28dfa87f73384b1bd0d221b2cfb9552316e05e17b0dfb79d              103 universe/source/Release
+ 37b34896b7ca2e689f895636858ea57356ca2eb1273b221864c83e09138d07ba         86378652 universe/source/Sources
+ 84e3bd6636e793a4eba594f600e934c8e2d2498da349927b1b501c70c995414b         26312964 universe/source/Sources.gz
+ e5f4c5a8b239421615df79e0eee5dbe8305fddbbbefb2446258fb462d84de7c4         21370628 universe/source/Sources.xz
+Acquire-By-Hash: yes

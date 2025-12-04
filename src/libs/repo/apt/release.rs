@@ -6,6 +6,7 @@ use std::{
 
 use base64::Engine;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256, Sha512};
 
 use crate::modules::error::UpmError;
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -13,11 +14,26 @@ pub struct InReleaseHash {
     hash_type: HashType,
     value: Vec<u8>,
 }
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, Copy)]
 pub enum HashType {
     Sha(u32),
     #[default]
     Md5sum,
+}
+impl FromStr for HashType {
+    type Err = UpmError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let s = s.to_ascii_lowercase();
+        if s.starts_with("sha") {
+            let s = s.strip_prefix("sha").unwrap();
+            let s = u32::from_str(s)?;
+            Ok(Self::Sha(s))
+        } else if s == "md5sum" {
+            Ok(Self::Md5sum)
+        } else {
+            Err(UpmError::ParseError(format!("{} is invalid HashType", s)))
+        }
+    }
 }
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AptInReleaseInfo {
@@ -47,8 +63,22 @@ impl AptInReleaseInfo {
             .split(begin_pgp_signature)
             .into_iter()
             .collect::<Vec<&str>>();
-        let (release, signature) = (s[0], s[1]);
-        let release = AptReleaseInfo::parse(release)?;
+        let (release_str, signature) = (s[0], s[1]);
+        let mut release = AptReleaseInfo::parse(release_str)?;
+        let mut hash = InReleaseHash::default();
+        let hash_field = release.fields.remove("Hash").ok_or(UpmError::Unsupported)?;
+        hash.hash_type = HashType::from_str(&hash_field)?;
+        {
+            let hash_field = format!("Hash: {}", hash_field);
+            let release_str = release_str.trim().strip_prefix(&hash_field);
+            match release_str {
+                Some(release_str) => {
+                    let release_str = release_str.trim();
+                    hash.value = hash.hash_type.calculate_hash(release_str)?;
+                }
+                None => {}
+            }
+        }
         let mut checksum = "";
         let signature = signature
             .split("\n")
@@ -77,7 +107,11 @@ impl AptInReleaseInfo {
         .to_vec();
         let checksum_matches = checksum == c_checksum;
         if checksum_matches {
-            Ok(Self { release, signature })
+            Ok(Self {
+                release,
+                signature,
+                hash,
+            })
         } else {
             let checksum = b.encode(checksum);
             let c_checksum = b.encode(c_checksum);
@@ -130,7 +164,7 @@ impl TryFrom<&str> for FileHashMetaData {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct FileHashMetaData {
     pub hash: Vec<u8>,
     pub size: u64,
@@ -145,7 +179,7 @@ impl Default for FileHashMetaData {
         }
     }
 }
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct AptReleaseInfo {
     pub origin: String,
     pub label: String,
@@ -275,15 +309,53 @@ impl AptReleaseInfo {
         targets
     }
 }
+impl HashType {
+    /// 与えられたHashTypeとデータ文字列に基づいてハッシュ値を計算します。
+    ///
+    /// # Arguments
+    /// * `hash_type` - 使用するハッシュアルゴリズム
+    /// * `data` - ハッシュを計算する対象の文字列
+    ///
+    /// # Returns
+    /// ハッシュ値のバイトベクタ、またはサポートされていないハッシュタイプの場合はエラー
+    pub fn calculate_hash(&self, data: impl AsRef<[u8]>) -> Result<Vec<u8>, UpmError> {
+        match self {
+            Self::Sha(i) => match i {
+                256 => {
+                    let mut hasher = Sha256::new();
+                    hasher.update(data);
+                    Ok(hasher.finalize().to_vec())
+                }
+                512 => {
+                    let mut hasher = Sha512::new();
+                    hasher.update(data);
+                    Ok(hasher.finalize().to_vec())
+                }
+                _ => Err(UpmError::Unsupported),
+            },
+            Self::Md5sum => {
+                let digest = md5::compute(data);
+                Ok(digest.to_vec())
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn parse_test() -> Result<(), UpmError> {
-        let target = include_str!("../../../../tests/apt/InRelease");
-        let in_release = AptInReleaseInfo::parse(target)?;
-        println!("{:#?}", in_release);
+        let in_release_str = include_str!("../../../../tests/apt/InRelease");
+        let release_str = include_str!("../../../../tests/apt/Release");
+        let in_release = AptInReleaseInfo::parse(in_release_str)?;
+        let release = AptReleaseInfo::parse(release_str)?;
+        let hash_type = in_release.hash.hash_type;
+        let hash_value = in_release.hash.value;
+        let orig_hash = hash_type.calculate_hash(release_str)?;
+        assert_eq!(in_release.release, release);
+        assert_eq!(orig_hash, hash_value);
         Ok(())
     }
 }

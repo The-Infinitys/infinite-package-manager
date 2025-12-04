@@ -16,6 +16,7 @@ crc = "3.4.0"
 deb822-lossless = { version = "0.4.0", features = ["deb822-fast"] }
 flate2 = "1.1.5"
 futures = "0.3.31"
+md5 = "0.8.0"
 reqwest = { version = "0.12.24", features = ["json"] }
 sequoia-openpgp = { version = "2.1.0", default-features = false, features = ["crypto-openssl"] }
 serde = { version = "1.0.228", features = ["derive"] }
