@@ -2,11 +2,10 @@ mod packages_parser;
 mod parser;
 mod release;
 mod vec_traits; // Restored
-use crate::libs::repo::apt::release::{AptInReleaseInfo, AptReleaseInfo};
+mod verify;
+use crate::libs::repo::apt::release::AptInReleaseInfo;
 use futures::future::join_all;
 use reqwest;
-use sequoia_openpgp::parse::{PacketParser, PacketParserResult, Parse};
-use sequoia_openpgp::{Cert, Packet};
 use serde_yaml; // Add this
 use sha2::{Digest, Sha256};
 // use std::io::Cursor; // 削除
@@ -217,8 +216,8 @@ impl Default for AptRepositoryEntry {
     }
 }
 impl AptRepositoryKeyInfo {
-    // 戻り値を `Option<Vec<u8>>` に変更
-    // (ファイルを読み込むため、エラー処理として `Result` を使用することも検討すべきです)
+    /// 鍵情報を Vec<u8> として読み込みます。
+    /// パス指定の場合はファイルから、Binの場合はクローンを返します。
     pub fn read_owned(&self) -> Option<Vec<u8>> {
         match self {
             Self::None => None,
@@ -338,10 +337,12 @@ impl AptRepositoryEntry {
         Ok(all_entries)
     }
 
+    /// すべてのリポジトリ設定を読み込み、含まれるすべての公開鍵のバイナリの配列も取得する
     pub async fn load_all() -> Result<Vec<Self>, UpmError> {
         let apt_sources_dir = PathBuf::from("/etc/apt/sources.list");
         let apt_sources_list_dir = PathBuf::from("/etc/apt/sources.list.d");
-        Self::_load_all_internal(apt_sources_dir, apt_sources_list_dir).await
+        let entries = Self::_load_all_internal(apt_sources_dir, apt_sources_list_dir).await?;
+        Ok(entries)
     }
     /// 個々のリポジトリ設定から、ダウンロード対象となるベースURLを生成する
     fn parent_urls(&self) -> Vec<String> {
@@ -400,45 +401,9 @@ async fn download_file(url: &str, path: &Path) -> Result<(), UpmError> {
     file.write_all(&content).await?;
     Ok(())
 }
-async fn verify_signature(
-    in_release: &AptInReleaseInfo,
-    key_info: &AptRepositoryKeyInfo,
-) -> Result<bool, UpmError> {
-    let signature_bytes: &[u8] = &in_release.signature;
 
-    // 1. 公開鍵の読み込みとCertの作成
-    let pub_key_bytes: Vec<u8> = match key_info.read_owned() {
-        Some(key) => key,
-        None => return Ok(false), // 鍵がない場合は検証不可
-    };
-    let cert = Cert::from_bytes(&pub_key_bytes)?;
+// 署名検証関数 (verify_signature) は削除されました。
 
-    // 2. 署名バイナリから Signature パケットをパース
-    let mut signature_packet: Option<sequoia_openpgp::packet::Signature> = None;
-    let parser = PacketParser::from_bytes(signature_bytes)?;
-    // `parser.next()`は`(Option<Packet>, PacketParserResult)`を返す
-    // Packetは`enum`なのでパターンマッチで`Signature`を取り出す
-    // `PacketParser`のイテレーションと`packet.as_signature()`を使って正しく抽出
-    while let PacketParserResult::Some(ref packet) = parser {
-        if let Packet::Signature(sig) = &packet.packet {
-            signature_packet = Some(sig.clone());
-            break;
-        }
-    }
-
-    let signature = signature_packet.ok_or_else(|| {
-        UpmError::Other("Failed to parse Signature packet from InRelease".to_string())
-    })?;
-
-    match signature.verify_document(cert.primary_key().key()) {
-        Ok(_) => Ok(true), // 検証成功
-        Err(e) => {
-            // 検証失敗
-            eprintln!("PGP Signature verification failed: {}", e);
-            Ok(false)
-        }
-    }
-}
 async fn _update_internal(
     entries: Vec<AptRepositoryEntry>,
     in_release_cache_dir: PathBuf,
@@ -454,26 +419,17 @@ async fn _update_internal(
 
     let mut all_packages_targets: Vec<PackagesDownloadTarget> = Vec::new();
 
-    // 1. InReleaseファイルをダウンロードし、検証する
+    // 1. InReleaseファイルをダウンロードし、パースする
     let in_release_processing_tasks = in_release_targets.into_iter().map(|target| {
         let in_release_cache_dir = in_release_cache_dir.clone();
         let packages_cache_dir = packages_cache_dir.clone();
         async move {
             let local_path = in_release_cache_dir.join(&target.local_path);
-
             // InReleaseファイルのダウンロード
             download_file(&target.url, &local_path).await?;
-
             // ダウンロードしたファイルの読み込みとパース
             let content = fs::read_to_string(&local_path).await?;
-            let in_release_info = release::AptInReleaseInfo::parse(&content)?;
-            // ここで署名の検証を行う
-            if !verify_signature(&in_release_info, &target.signed_by_key).await? {
-                return Err(UpmError::Unsupported);
-            }
-
-            // PackagesDownloadTargetの抽出
-            let apt_release_info: AptReleaseInfo = in_release_info.release;
+            let apt_release_info = AptInReleaseInfo::parse(&content, &target.signed_by_key)?;
             Ok(apt_release_info.get_packages_download_targets(&target.url, &packages_cache_dir))
         }
     });
@@ -547,6 +503,7 @@ pub async fn update() -> Result<(), UpmError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // uuid クレートを使用するために、Cargo.toml に追加が必要です (例: uuid = { version = "1.0", features = ["v4"] })
     #[tokio::main]
     #[test]
     async fn update_test() -> Result<(), UpmError> {
@@ -557,71 +514,68 @@ mod tests {
         // Create a unique temporary directory for this test
         let temp_test_dir = std::env::temp_dir().join(format!("upm_test_{}", uuid::Uuid::new_v4()));
         tokio::fs::create_dir_all(&temp_test_dir).await?;
+        let result: Result<(), UpmError> = {
+            // Define temporary paths for source file, keyring, and cache directories within the test's temp dir
+            let temp_sources_file = temp_test_dir.join("ubuntu.sources");
+            let temp_keyring_dir = temp_test_dir.join("keyrings");
+            let temp_keyring_file = temp_keyring_dir.join("ubuntu-archive-keyring.gpg");
+            let in_release_cache_dir_test = temp_test_dir.join("caches/lists/releases");
+            let packages_cache_dir_test = temp_test_dir.join("caches/lists/packages");
+            let package_list_dir_test = temp_test_dir.join("repo/packages");
 
-        // Define temporary paths for source file, keyring, and cache directories within the test's temp dir
-        let temp_sources_file = temp_test_dir.join("ubuntu.sources");
-        let temp_keyring_dir = temp_test_dir.join("keyrings");
-        let temp_keyring_file = temp_keyring_dir.join("ubuntu-archive-keyring.gpg");
-        let in_release_cache_dir_test = temp_test_dir.join("caches/lists/releases");
-        let packages_cache_dir_test = temp_test_dir.join("caches/lists/packages");
-        let package_list_dir_test = temp_test_dir.join("repo/packages");
+            // Ensure keyring directory exists
+            tokio::fs::create_dir_all(&temp_keyring_dir).await?;
 
-        // Ensure keyring directory exists
-        tokio::fs::create_dir_all(&temp_keyring_dir).await?;
+            // Write the temporary GPG key file
+            tokio::fs::write(&temp_keyring_file, test_signature_content).await?;
 
-        // Write the temporary GPG key file
-        tokio::fs::write(&temp_keyring_file, test_signature_content).await?;
+            // Dynamically replace the Signed-By path in test_sources_content
+            let modified_sources_content = test_sources_content
+                .replace(
+                    "/tmp/union-package-manager/keyrings/ubuntu-archive-keyring.gpg",
+                    temp_keyring_file.to_str().unwrap(),
+                )
+                // Fix typo in original test file content if present
+                .replace(
+                    "/tmp/union-package-managerkeyrings/ubuntu-archive-keyring.gpg",
+                    temp_keyring_file.to_str().unwrap(),
+                );
 
-        // Dynamically replace the Signed-By path in test_sources_content
-        let modified_sources_content = test_sources_content
-            .replace(
-                "/tmp/union-package-manager/keyrings/ubuntu-archive-keyring.gpg",
-                temp_keyring_file.to_str().unwrap(),
-            )
-            // Fix typo in original test file content if present
-            .replace(
-                "/tmp/union-package-managerkeyrings/ubuntu-archive-keyring.gpg",
-                temp_keyring_file.to_str().unwrap(),
+            tokio::fs::write(&temp_sources_file, modified_sources_content).await?;
+            let entries = AptRepositoryEntry::load(&temp_sources_file)?;
+            assert!(
+                !entries.is_empty(),
+                "No repository entries loaded from temporary sources file"
             );
 
-        // Write the modified sources content to a temporary file
-        tokio::fs::write(&temp_sources_file, modified_sources_content).await?;
+            _update_internal(
+                entries,
+                in_release_cache_dir_test.clone(),
+                packages_cache_dir_test.clone(),
+                package_list_dir_test.clone(),
+            )
+            .await?;
 
-        // Override load_all to use our temporary sources file for this test
-        let entries = AptRepositoryEntry::load(&temp_sources_file)?;
-        assert!(
-            !entries.is_empty(),
-            "No repository entries loaded from temporary sources file"
-        );
-
-        // Call the internal update function with temporary paths
-        _update_internal(
-            entries,
-            in_release_cache_dir_test.clone(),
-            packages_cache_dir_test.clone(),
-            package_list_dir_test.clone(),
-        )
-        .await?;
-
-        // Assertions: Check if package files were created
-        let mut package_files = tokio::fs::read_dir(&package_list_dir_test).await?;
-        let mut found_packages = 0;
-        while let Some(entry) = package_files.next_entry().await? {
-            let file_name = entry.file_name();
-            if file_name.to_string_lossy().ends_with(".yaml") {
-                found_packages += 1;
+            // Assertions: Check if package files were created
+            let mut package_files = tokio::fs::read_dir(&package_list_dir_test).await?;
+            let mut found_packages = 0;
+            while let Some(entry) = package_files.next_entry().await? {
+                let file_name = entry.file_name();
+                if file_name.to_string_lossy().ends_with(".yaml") {
+                    found_packages += 1;
+                }
             }
-        }
-        // Depending on the content of the dummy InRelease and Packages files,
-        // you might expect a certain number of packages. For now, just check if any were created.
-        assert!(
-            found_packages > 0,
-            "No package files were created in the temporary package list directory"
-        );
-
+            // Depending on the content of the dummy InRelease and Packages files,
+            // you might expect a certain number of packages. For now, just check if any were created.
+            assert!(
+                found_packages > 0,
+                "No package files were created in the temporary package list directory"
+            );
+            Ok(())
+        };
         // Cleanup: Remove the temporary directory
         tokio::fs::remove_dir_all(&temp_test_dir).await?;
-
+        result?;
         Ok(())
     }
 }

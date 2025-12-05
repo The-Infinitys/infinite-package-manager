@@ -1,127 +1,23 @@
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256, Sha512};
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
     str::FromStr,
 };
 
-use base64::Engine;
-use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256, Sha512};
-
-use crate::modules::error::UpmError;
+use crate::{
+    libs::repo::apt::{AptRepositoryKeyInfo, verify::verification},
+    modules::error::UpmError,
+};
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct InReleaseHash {
-    pub hash_type: HashType,
-    pub release: String,
-    pub value: Vec<u8>,
-}
-#[derive(Debug, Clone, Default, Serialize, Deserialize, Copy)]
-pub enum HashType {
-    Sha(u32),
-    #[default]
-    Md5sum,
-}
-impl FromStr for HashType {
-    type Err = UpmError;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let s = s.to_ascii_lowercase();
-        if s.starts_with("sha") {
-            let s = s.strip_prefix("sha").unwrap();
-            let s = u32::from_str(s)?;
-            Ok(Self::Sha(s))
-        } else if s == "md5sum" {
-            Ok(Self::Md5sum)
-        } else {
-            Err(UpmError::ParseError(format!("{} is invalid HashType", s)))
-        }
-    }
-}
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct AptInReleaseInfo {
-    pub signature: Vec<u8>,
-    pub release: AptReleaseInfo,
-    pub hash: InReleaseHash,
-}
+pub struct AptInReleaseInfo;
 impl AptInReleaseInfo {
-    pub fn parse(content: &str) -> Result<Self, UpmError> {
-        let begin_pgp_signed_message = "-----BEGIN PGP SIGNED MESSAGE-----";
-        let begin_pgp_signature = "-----BEGIN PGP SIGNATURE-----";
-        let end_pgp_signature = "-----END PGP SIGNATURE-----";
-        let content = content
-            .trim()
-            .strip_prefix(begin_pgp_signed_message)
-            .ok_or(UpmError::ParseError(format!(
-                "{} not found",
-                begin_pgp_signed_message
-            )))?;
-        let content = content
-            .strip_suffix(end_pgp_signature)
-            .ok_or(UpmError::ParseError(format!(
-                "{} not found",
-                end_pgp_signature
-            )))?;
-        let s = content
-            .split(begin_pgp_signature)
-            .into_iter()
-            .collect::<Vec<&str>>();
-        let (release_str, signature) = (s[0], s[1]);
-        let mut release = AptReleaseInfo::parse(release_str)?;
-        let mut hash = InReleaseHash::default();
-        let hash_field = release.fields.remove("Hash").ok_or(UpmError::Unsupported)?;
-        hash.hash_type = HashType::from_str(&hash_field)?;
-        {
-            let hash_field = format!("Hash: {}", hash_field);
-            let release_str = release_str.trim().strip_prefix(&hash_field);
-            match release_str {
-                Some(release_str) => {
-                    let release_str = release_str.trim();
-                    hash.release = release_str.to_string();
-                    hash.value = hash.hash_type.calculate_hash(release_str)?;
-                }
-                None => {}
-            }
-        }
-        let mut checksum = "";
-        let signature = signature
-            .split("\n")
-            .map(|s| s.trim())
-            .map(|s| {
-                if s.starts_with("=") {
-                    checksum = s.strip_prefix("=").unwrap();
-                    ""
-                } else {
-                    s
-                }
-            })
-            .collect::<Vec<&str>>()
-            .join("");
-        println!("{}", signature);
-        let b = base64::engine::general_purpose::STANDARD;
-        let signature = b.decode(signature)?;
-        let checksum = b.decode(checksum)?;
-        let crc_24: crc::Crc<u32> = crc::Crc::<u32>::new(&crc::CRC_24_OPENPGP);
-        let c_checksum = crc_24.checksum(&signature);
-        let c_checksum = [
-            (c_checksum >> 16) as u8,
-            (c_checksum >> 8) as u8,
-            c_checksum as u8,
-        ]
-        .to_vec();
-        let checksum_matches = checksum == c_checksum;
-        if checksum_matches {
-            Ok(Self {
-                release,
-                signature,
-                hash,
-            })
-        } else {
-            let checksum = b.encode(checksum);
-            let c_checksum = b.encode(c_checksum);
-            Err(UpmError::ParseError(format!(
-                "Signature doesn't match. expected: {}, actual: {}",
-                checksum, c_checksum
-            )))
-        }
+    pub fn parse(content: &str, key: &AptRepositoryKeyInfo) -> Result<AptReleaseInfo, UpmError> {
+        let public_gpg = key.read_owned();
+        let verified_context = verification(content, public_gpg)?;
+        let verified_context = String::from_utf8(verified_context)?;
+        AptReleaseInfo::parse(&verified_context)
     }
 }
 fn hex_string_to_vec_u8(hex: &str) -> Result<Vec<u8>, UpmError> {
@@ -311,7 +207,15 @@ impl AptReleaseInfo {
         targets
     }
 }
-impl HashType {
+#[allow(unused)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, Copy)]
+pub enum Hash {
+    Sha(u32),
+    #[default]
+    Md5sum,
+}
+
+impl Hash {
     /// 与えられたHashTypeとデータ文字列に基づいてハッシュ値を計算します。
     ///
     /// # Arguments
@@ -320,7 +224,7 @@ impl HashType {
     ///
     /// # Returns
     /// ハッシュ値のバイトベクタ、またはサポートされていないハッシュタイプの場合はエラー
-    pub fn calculate_hash(&self, data: impl AsRef<[u8]>) -> Result<Vec<u8>, UpmError> {
+    pub fn _calculate_hash(&self, data: impl AsRef<[u8]>) -> Result<Vec<u8>, UpmError> {
         match self {
             Self::Sha(i) => match i {
                 256 => {
@@ -351,13 +255,9 @@ mod tests {
     fn parse_test() -> Result<(), UpmError> {
         let in_release_str = include_str!("../../../../tests/apt/InRelease");
         let release_str = include_str!("../../../../tests/apt/Release");
-        let in_release = AptInReleaseInfo::parse(in_release_str)?;
+        let in_release = AptInReleaseInfo::parse(in_release_str, &AptRepositoryKeyInfo::None)?;
         let release = AptReleaseInfo::parse(release_str)?;
-        let hash_type = in_release.hash.hash_type;
-        let hash_value = in_release.hash.value;
-        let orig_hash = hash_type.calculate_hash(release_str)?;
-        assert_eq!(in_release.release, release);
-        assert_eq!(orig_hash, hash_value);
+        assert_eq!(in_release, release);
         Ok(())
     }
 }

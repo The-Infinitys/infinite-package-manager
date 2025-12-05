@@ -72,9 +72,7 @@ pub async fn update() -> Result<(), UpmError> {
     }
 
     match system::PackageManager::get() {
-        PackageManager::Dpkg => {
-            apt::update().await
-        }
+        PackageManager::Dpkg => apt::update().await,
         _ => Err(UpmError::Unsupported),
     }
 }
