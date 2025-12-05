@@ -11,9 +11,9 @@ use sha2::{Digest, Sha256, Sha512};
 use crate::modules::error::UpmError;
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct InReleaseHash {
-   pub hash_type: HashType,
-   pub value: Vec<u8>,
-   pub release:String,
+    pub hash_type: HashType,
+    pub release: String,
+    pub value: Vec<u8>,
 }
 #[derive(Debug, Clone, Default, Serialize, Deserialize, Copy)]
 pub enum HashType {
@@ -41,76 +41,64 @@ pub struct AptInReleaseInfo {
     pub signature: Vec<u8>,
     pub release: AptReleaseInfo,
     pub hash: InReleaseHash,
-    pub signed_content: String,
 }
 impl AptInReleaseInfo {
     pub fn parse(content: &str) -> Result<Self, UpmError> {
         let begin_pgp_signed_message = "-----BEGIN PGP SIGNED MESSAGE-----";
         let begin_pgp_signature = "-----BEGIN PGP SIGNATURE-----";
         let end_pgp_signature = "-----END PGP SIGNATURE-----";
-
-        // Extract the full content between BEGIN PGP SIGNED MESSAGE and END PGP SIGNATURE
-        let message_block_without_end_signature = content
-            .strip_suffix(end_pgp_signature)
-            .ok_or_else(|| UpmError::ParseError(format!("{} not found", end_pgp_signature)))?;
-
-        let (signed_message_part, signature_block_raw) = message_block_without_end_signature
-            .split_once(begin_pgp_signature)
-            .ok_or_else(|| UpmError::ParseError(format!("{} not found", begin_pgp_signature)))?;
-
-        // Extract the signed content which is between "-----BEGIN PGP SIGNED MESSAGE-----" and "-----BEGIN PGP SIGNATURE-----"
-        let signed_content = signed_message_part
+        let content = content
+            .trim()
             .strip_prefix(begin_pgp_signed_message)
-            .unwrap_or(signed_message_part) // Should always strip it if it's there
-            .trim_start_matches('\n') // Remove leading newlines after the PGP header
-            .to_owned();
-
-        // Prepare the release content for parsing AptReleaseInfo
-        // This involves removing the "Hash: " line from the signed_content
-        let mut lines: Vec<&str> = signed_content.lines().collect();
-        let hash_line_index = lines.iter().position(|line| line.starts_with("Hash: "));
-        let mut hash_field_value: Option<String> = None;
-
-        if let Some(index) = hash_line_index {
-            let hash_line = lines.remove(index);
-            hash_field_value = hash_line.strip_prefix("Hash: ").map(|s| s.to_string());
-        }
-        
-        let release_str_for_parsing = lines.join("\n");
-        let release = AptReleaseInfo::parse(&release_str_for_parsing)?;
-        
-        // Handle InReleaseHash
+            .ok_or(UpmError::ParseError(format!(
+                "{} not found",
+                begin_pgp_signed_message
+            )))?;
+        let content = content
+            .strip_suffix(end_pgp_signature)
+            .ok_or(UpmError::ParseError(format!(
+                "{} not found",
+                end_pgp_signature
+            )))?;
+        let s = content
+            .split(begin_pgp_signature)
+            .into_iter()
+            .collect::<Vec<&str>>();
+        let (release_str, signature) = (s[0], s[1]);
+        let mut release = AptReleaseInfo::parse(release_str)?;
         let mut hash = InReleaseHash::default();
-        if let Some(hf_value) = hash_field_value {
-            hash.hash_type = HashType::from_str(&hf_value)?;
-            hash.release = release_str_for_parsing.to_owned(); // This is the content of the Release file itself
-            hash.value = hash.hash_type.calculate_hash(hash.release.as_bytes())?;
-        } else {
-            return Err(UpmError::ParseError("Missing 'Hash:' field in InRelease".to_string()));
+        let hash_field = release.fields.remove("Hash").ok_or(UpmError::Unsupported)?;
+        hash.hash_type = HashType::from_str(&hash_field)?;
+        {
+            let hash_field = format!("Hash: {}", hash_field);
+            let release_str = release_str.trim().strip_prefix(&hash_field);
+            match release_str {
+                Some(release_str) => {
+                    let release_str = release_str.trim();
+                    hash.release = release_str.to_string();
+                    hash.value = hash.hash_type.calculate_hash(release_str)?;
+                }
+                None => {}
+            }
         }
-
-        // Parse signature block
-        let mut checksum_val = "";
-        let signature_base64_part = signature_block_raw
-            .lines()
-            .filter(|&line| {
-                if line.starts_with("=") {
-                    checksum_val = line.strip_prefix("=").unwrap();
-                    false // Checksum line is not part of the base64 encoded signature
-                } else if line.starts_with("Version:") {
-                    false // Version line is not part of the base64 encoded signature
+        let mut checksum = "";
+        let signature = signature
+            .split("\n")
+            .map(|s| s.trim())
+            .map(|s| {
+                if s.starts_with("=") {
+                    checksum = s.strip_prefix("=").unwrap();
+                    ""
                 } else {
-                    true
+                    s
                 }
             })
             .collect::<Vec<&str>>()
             .join("");
-        
+        println!("{}", signature);
         let b = base64::engine::general_purpose::STANDARD;
-        let signature = b.decode(signature_base64_part)?;
-        let checksum = b.decode(checksum_val)?;
-
-        // Verify CRC24 checksum
+        let signature = b.decode(signature)?;
+        let checksum = b.decode(checksum)?;
         let crc_24: crc::Crc<u32> = crc::Crc::<u32>::new(&crc::CRC_24_OPENPGP);
         let c_checksum = crc_24.checksum(&signature);
         let c_checksum = [
@@ -120,26 +108,24 @@ impl AptInReleaseInfo {
         ]
         .to_vec();
         let checksum_matches = checksum == c_checksum;
-
         if checksum_matches {
             Ok(Self {
                 release,
                 signature,
                 hash,
-                signed_content, // Store the raw signed content here
             })
         } else {
-            let checksum_encoded = b.encode(checksum);
-            let c_checksum_encoded = b.encode(c_checksum);
+            let checksum = b.encode(checksum);
+            let c_checksum = b.encode(c_checksum);
             Err(UpmError::ParseError(format!(
                 "Signature doesn't match. expected: {}, actual: {}",
-                checksum_encoded, c_checksum_encoded
+                checksum, c_checksum
             )))
         }
     }
 }
 fn hex_string_to_vec_u8(hex: &str) -> Result<Vec<u8>, UpmError> {
-    if !hex.len().is_multiple_of(2) {
+    if hex.len() % 2 != 0 {
         return Err(UpmError::ParseError(
             "Hex string must have an even number of digits.".to_string(),
         ));
