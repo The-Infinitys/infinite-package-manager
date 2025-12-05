@@ -13,56 +13,37 @@ use std::io::Read;
 
 // 1. 構造体を Option<Vec<Cert>> に戻す
 struct Helper {
-    certs: Option<Vec<Cert>>,
+    certs: Vec<Cert>,
 }
 
 impl Helper {
     pub fn new(signature: Option<impl AsRef<[u8]>>) -> Result<Self, UpmError> {
-        let certs = match signature {
-            Some(signature) => {
-                let signature = signature.as_ref();
-
-                let ppr = PacketParser::from_bytes(signature)?;
-                let mut certs_vec = Vec::new();
-
-                // CertParser を使用して、バイト列に含まれるすべての Cert をパース
-                for cert_result in CertParser::from(ppr) {
-                    match cert_result {
-                        Ok(cert) => {
-                            certs_vec.push(cert);
-                        }
-                        Err(err) => {
-                            // 不正な Cert が含まれていても、ログを出力して続行
-                            eprintln!("Error reading keyring: {}", err);
-                        }
+        let mut certs_vec = Vec::new();
+        if let Some(signature) = signature {
+            let signature = signature.as_ref();
+            let ppr = PacketParser::from_bytes(signature)?;
+            for cert_result in CertParser::from(ppr) {
+                match cert_result {
+                    Ok(cert) => {
+                        certs_vec.push(cert);
+                    }
+                    Err(err) => {
+                        // 不正な Cert が含まれていても、ログを出力して続行
+                        eprintln!("Error reading keyring: {}", err);
                     }
                 }
-
-                // 鍵が1つ以上パースできた場合のみ Some を返す
-                if certs_vec.is_empty() {
-                    None
-                } else {
-                    Some(certs_vec)
-                }
             }
-            None => None,
-        };
-        Ok(Self { certs })
+        }
+        Ok(Self { certs: certs_vec })
     }
 
     pub fn lookup_cert_by_handle(
         &self,
         id: &KeyHandle,
     ) -> Result<Cert, sequoia_openpgp::anyhow::Error> {
-        if let Some(certs_vec) = &self.certs {
-            // 💡 Vec に対して線形探索 (.iter().find()) を実行
-            if let Some(cert) = certs_vec.iter().find(|cert| cert.key_handle() == *id) {
-                // 鍵が見つかったらクローンを返す
-                return Ok(cert.clone());
-            }
+        if let Some(cert) = self.certs.iter().find(|cert| cert.key_handle() == *id) {
+            return Ok(cert.clone());
         }
-
-        // 公開鍵がない、またはKeyHandleが一致しない場合はエラーを返します。
         Err(sequoia_openpgp::anyhow::Error::msg(
             "Public key not found or KeyHandle mismatch",
         ))
@@ -71,14 +52,12 @@ impl Helper {
 
 impl VerificationHelper for Helper {
     fn get_certs(&mut self, ids: &[KeyHandle]) -> Result<Vec<Cert>> {
-        // public_gpg が None の場合は、見つかった証明書はなしとして空のVecを返します。
-        if self.certs.is_none() {
+        if self.certs.is_empty() {
             return Ok(Vec::new());
         }
 
         let mut found_certs = Vec::new();
         for id in ids {
-            // lookup_cert_by_handle を使用
             found_certs.push(self.lookup_cert_by_handle(id)?);
         }
         Ok(found_certs)
@@ -90,7 +69,6 @@ impl VerificationHelper for Helper {
 
         for layer in structure.into_iter() {
             match layer {
-                // 暗号化や圧縮があっても許可する
                 MessageLayer::Encryption { .. } | MessageLayer::Compression { .. } => {}
 
                 MessageLayer::SignatureGroup { ref results } => {
@@ -102,8 +80,8 @@ impl VerificationHelper for Helper {
             }
         }
 
-        // 🔑 公開鍵が指定されている（検証を期待している）場合
-        if self.certs.is_some() {
+        // 公開鍵が指定されている（certsが空でない）場合のみ署名検証を行う
+        if !self.certs.is_empty() {
             if !signature_found {
                 return Err(anyhow::anyhow!(
                     "Message must contain a signature when public key is provided"
@@ -114,7 +92,6 @@ impl VerificationHelper for Helper {
             }
         }
 
-        // 公開鍵が指定されていない場合は、署名の有無や有効性はチェックしません（パースを許可します）。
         Ok(())
     }
 }

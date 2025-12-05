@@ -7,6 +7,8 @@ pub enum UpmError {
     // 組み込みのFromトレイトとthiserrorのマクロを使用
     #[error("I/O Error: {0}")]
     Io(#[from] std::io::Error),
+    #[error("I/O Error: {0}")]
+    IoError(String), // 新しく追加
     #[error("Deb Sources Parser Error (Deb822): {0}")]
     Deb822(#[from] deb822_lossless::Error),
     #[error("Deb Sources Parse Error (Deb822Parse): {0}")]
@@ -40,6 +42,8 @@ pub enum UpmError {
     SignatureVerificationAnyHowError(#[from] sequoia_openpgp::anyhow::Error),
     #[error("FromUtf8Error: {0}")]
     FromUtf8Error(#[from] std::string::FromUtf8Error),
+    #[error("No Result (error already reported)")]
+    NoResult, // 新しく追加
 }
 
 impl UpmError {
@@ -49,6 +53,7 @@ impl UpmError {
         let kind_label = "kind".cyan();
         let kind_value = match self {
             Self::Io(_) => "Io",
+            Self::IoError(_) => "IoError",
             Self::Deb822(_) => "Deb822",
             Self::Deb822Parse(_) => "Deb822Parse",
             Self::Other(_) => "Other",
@@ -65,6 +70,7 @@ impl UpmError {
             Self::SignatureVerificationError(_) => "SignatureVerificationError",
             Self::SignatureVerificationAnyHowError(_) => "SignatureVerificationError",
             Self::FromUtf8Error(_) => "FromUtf8Error",
+            Self::NoResult => "NoResult",
         };
         // Kindは必ず改行付きで出力します
         writeln!(f, "  {}: {}", kind_label, kind_value.yellow())
@@ -80,6 +86,7 @@ impl UpmError {
         // メッセージを格納するための変数。PathBufはdisplay()で文字列として扱う
         let message_value = match self {
             Self::Io(e) => e.to_string(),
+            Self::IoError(msg) => msg.clone(),
             Self::Deb822(e) => e.to_string(),
             Self::Deb822Parse(e) => e.to_string(),
             Self::Other(msg) => msg.clone(),
@@ -100,6 +107,7 @@ impl UpmError {
             Self::SignatureVerificationError(msg) => msg.to_string(),
             Self::SignatureVerificationAnyHowError(msg) => msg.to_string(),
             Self::FromUtf8Error(e) => e.to_string(),
+            Self::NoResult => "No further result available; error handled elsewhere.".to_string(),
         };
         // 最後に、組み立てたメッセージとラベルをFormatterに出力
         // メッセージは赤で強調
