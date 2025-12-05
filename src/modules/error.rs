@@ -35,7 +35,7 @@ pub enum UpmError {
     #[error("www request error: {0}")]
     WwwReqestError(#[from] reqwest::Error),
     #[error("Signature Verification Error: {0}")]
-    SignatureVerificationError(String),
+    SignatureVerificationError(#[from] sequoia_openpgp::anyhow::Error),
 }
 
 impl UpmError {
@@ -91,7 +91,7 @@ impl UpmError {
             UpmError::AsyncRuntimeJoinError(e) => e.to_string(),
             UpmError::SerdeYaml(e) => e.to_string(),
             UpmError::WwwReqestError(e) => e.to_string(),
-            UpmError::SignatureVerificationError(msg) => msg.clone(),
+            UpmError::SignatureVerificationError(msg) => msg.to_string(),
         };
         // 最後に、組み立てたメッセージとラベルをFormatterに出力
         // メッセージは赤で強調

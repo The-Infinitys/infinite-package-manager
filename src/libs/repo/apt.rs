@@ -2,9 +2,11 @@ mod packages_parser;
 mod parser;
 mod release;
 mod vec_traits; // Restored
-use crate::libs::repo::apt::release::AptReleaseInfo;
+use crate::libs::repo::apt::release::{AptInReleaseInfo, AptReleaseInfo};
 use futures::future::join_all;
 use reqwest;
+use sequoia_openpgp::parse::{PacketParser, PacketParserResult, Parse};
+use sequoia_openpgp::{Cert, Packet};
 use serde_yaml; // Add this
 use sha2::{Digest, Sha256};
 // use std::io::Cursor; // 削除
@@ -142,14 +144,10 @@ impl fmt::Display for AptRepositoryEntry {
                     // 省略形式で表示
                     writeln!(
                         f,
-                        "  {}",
-                        format!(
-                            "{}{}{}",
-                            start.red().italic(),
-                            "...".dimmed().italic(),
-                            end.red().italic()
-                        )
-                        .to_string() // 色はPathに合わせて赤に
+                        "  {}{}{}",
+                        start.red().italic(),
+                        "...".dimmed().italic(),
+                        end.red().italic()
                     )?;
                 } else {
                     // 文字列が短い場合は全体を表示
@@ -403,19 +401,44 @@ async fn download_file(url: &str, path: &Path) -> Result<(), UpmError> {
     Ok(())
 }
 async fn verify_signature(
-    _data_path: &Path, // 署名対象のファイルパス
-    _signature_data: &[u8], // 署名データ (InReleaseファイル内に含まれる)
-    _signed_by_key: &AptRepositoryKeyInfo, // 公開鍵情報
+    in_release: &AptInReleaseInfo,
+    key_info: &AptRepositoryKeyInfo,
 ) -> Result<bool, UpmError> {
-    // 1. 公開鍵の読み込みとパース
-    // 2. 署名対象データ（InReleaseファイルのRelease部分）の取得
-    // 3. 署名の検証の設定と実行
-    
-    // sequoia-openpgpを削除したため、署名検証処理全体をtodo!で置き換え
-    todo!("署名検証のロジックを実装する必要があります（sequoia-openpgpの代わりに別のライブラリを使用するなど）");
-    // Ok(true)
-}
+    let signature_bytes: &[u8] = &in_release.signature;
 
+    // 1. 公開鍵の読み込みとCertの作成
+    let pub_key_bytes: Vec<u8> = match key_info.read_owned() {
+        Some(key) => key,
+        None => return Ok(false), // 鍵がない場合は検証不可
+    };
+    let cert = Cert::from_bytes(&pub_key_bytes)?;
+
+    // 2. 署名バイナリから Signature パケットをパース
+    let mut signature_packet: Option<sequoia_openpgp::packet::Signature> = None;
+    let parser = PacketParser::from_bytes(signature_bytes)?;
+    // `parser.next()`は`(Option<Packet>, PacketParserResult)`を返す
+    // Packetは`enum`なのでパターンマッチで`Signature`を取り出す
+    // `PacketParser`のイテレーションと`packet.as_signature()`を使って正しく抽出
+    while let PacketParserResult::Some(ref packet) = parser {
+        if let Packet::Signature(sig) = &packet.packet {
+            signature_packet = Some(sig.clone());
+            break;
+        }
+    }
+
+    let signature = signature_packet.ok_or_else(|| {
+        UpmError::Other("Failed to parse Signature packet from InRelease".to_string())
+    })?;
+
+    match signature.verify_document(cert.primary_key().key()) {
+        Ok(_) => Ok(true), // 検証成功
+        Err(e) => {
+            // 検証失敗
+            eprintln!("PGP Signature verification failed: {}", e);
+            Ok(false)
+        }
+    }
+}
 async fn _update_internal(
     in_release_cache_dir: PathBuf,
     packages_cache_dir: PathBuf,
@@ -444,19 +467,9 @@ async fn _update_internal(
             // ダウンロードしたファイルの読み込みとパース
             let content = fs::read_to_string(&local_path).await?;
             let in_release_info = release::AptInReleaseInfo::parse(&content)?;
-
             // ここで署名の検証を行う
-            if !verify_signature(
-                &local_path,
-                &in_release_info.signature,
-                &target.signed_by_key,
-            )
-            .await?
-            {
-                return Err(UpmError::SignatureVerificationError(format!(
-                    "Signature verification failed for {}",
-                    target.url
-                )));
+            if !verify_signature(&in_release_info, &target.signed_by_key).await? {
+                return Err(UpmError::Unsupported);
             }
 
             // PackagesDownloadTargetの抽出

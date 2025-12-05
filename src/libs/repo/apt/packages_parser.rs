@@ -9,7 +9,7 @@ pub fn parse_packages_file(path: impl AsRef<Path>) -> Result<Vec<DebPackageEntry
     let path = path.as_ref();
     let file = std::fs::File::open(path)?;
 
-    let reader: Box<dyn Read> = if path.extension().map_or(false, |ext| ext == "gz") {
+    let reader: Box<dyn Read> = if path.extension().is_some_and(|ext| ext == "gz") {
         Box::new(GzDecoder::new(file))
     } else {
         Box::new(file)
