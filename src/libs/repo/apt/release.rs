@@ -1,25 +1,11 @@
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256, Sha512};
-use std::{
-    collections::HashMap,
-    path::{Path, PathBuf},
-    str::FromStr,
-};
+use std::{collections::HashMap, path::PathBuf, str::FromStr};
 
 use crate::{
     libs::repo::apt::{AptRepositoryKeyInfo, verify::verification},
     modules::error::UpmError,
 };
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct AptInReleaseInfo;
-impl AptInReleaseInfo {
-    pub fn parse(content: &str, key: &AptRepositoryKeyInfo) -> Result<AptReleaseInfo, UpmError> {
-        let public_gpg = key.read_owned();
-        let verified_context = verification(content, public_gpg)?;
-        let verified_context = String::from_utf8(verified_context)?;
-        AptReleaseInfo::parse(&verified_context)
-    }
-}
 fn hex_string_to_vec_u8(hex: &str) -> Result<Vec<u8>, UpmError> {
     if hex.len() % 2 != 0 {
         return Err(UpmError::ParseError(
@@ -95,6 +81,12 @@ pub struct AptReleaseInfo {
 }
 
 impl AptReleaseInfo {
+    pub fn parse_signed(content: &str, key: &AptRepositoryKeyInfo) -> Result<Self, UpmError> {
+        let public_gpg = key.read_owned();
+        let verified_context = verification(content, public_gpg)?;
+        let verified_context = String::from_utf8(verified_context)?;
+        AptReleaseInfo::parse(&verified_context)
+    }
     /// 文字列からAptReleaseInfoをパースする
     pub fn parse(content: &str) -> Result<Self, UpmError> {
         let mut release_info = AptReleaseInfo::default();
@@ -169,43 +161,6 @@ impl AptReleaseInfo {
         }
         Ok(release_info)
     }
-
-    pub fn get_packages_download_targets(
-        &self,
-        base_url: &str,
-        packages_cache_dir: &Path,
-    ) -> Vec<crate::libs::repo::apt::PackagesDownloadTarget> {
-        let mut targets = Vec::new();
-
-        let mut add_targets = |hash_list: &[FileHashMetaData], hash_type: &str| {
-            for meta in hash_list {
-                let file_name = meta.path.to_string_lossy();
-                // Check if the file is a Packages file (could be Packages, Packages.gz, Packages.xz, etc.)
-                // For now, only consider Packages and Packages.gz
-                if file_name.ends_with("Packages") || file_name.ends_with("Packages.gz") {
-                    let url = format!(
-                        "{}/{}",
-                        base_url.rsplit_once('/').unwrap_or((base_url, "")).0,
-                        file_name
-                    );
-                    let local_path = packages_cache_dir.join(&meta.path);
-                    targets.push(crate::libs::repo::apt::PackagesDownloadTarget {
-                        url,
-                        local_path,
-                        hash_type: hash_type.to_string(),
-                        expected_hash: meta.hash.clone(),
-                    });
-                }
-            }
-        };
-
-        // Prefer SHA256, then SHA1, then MD5
-        add_targets(&self.sha256, "sha256");
-        add_targets(&self.sha1, "sha1");
-        add_targets(&self.md5sum, "md5");
-
-        targets
-    }
 }
 #[allow(unused)]
 #[derive(Debug, Clone, Default, Serialize, Deserialize, Copy)]
@@ -255,7 +210,7 @@ mod tests {
     fn parse_test() -> Result<(), UpmError> {
         let in_release_str = include_str!("../../../../tests/apt/InRelease");
         let release_str = include_str!("../../../../tests/apt/Release");
-        let in_release = AptInReleaseInfo::parse(in_release_str, &AptRepositoryKeyInfo::None)?;
+        let in_release = AptReleaseInfo::parse_signed(in_release_str, &AptRepositoryKeyInfo::None)?;
         let release = AptReleaseInfo::parse(release_str)?;
         assert_eq!(in_release, release);
         Ok(())

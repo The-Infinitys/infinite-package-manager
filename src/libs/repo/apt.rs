@@ -3,19 +3,13 @@ mod parser;
 mod release;
 mod vec_traits; // Restored
 mod verify;
-use crate::libs::repo::apt::release::AptInReleaseInfo;
-use futures::future::join_all;
 use reqwest;
-use serde_yaml; // Add this
-use sha2::{Digest, Sha256};
 // use std::io::Cursor; // 削除
 use std::path::Path;
 use std::{collections::HashMap, path::PathBuf, process::Command};
-use tokio::{
-    fs::{self, File},
-    io::{AsyncReadExt, AsyncWriteExt},
-}; // Add this
+use tokio::io::AsyncWriteExt; // Add this
 
+use crate::libs::repo::apt::release::Hash;
 use crate::{libs::repo::apt::vec_traits::AptRepositoryEntryVec, modules::error::UpmError};
 use base64::Engine;
 use parser::list;
@@ -27,22 +21,6 @@ pub enum AptRepositoryType {
     DebSrc,
 }
 use colored::*;
-use tokio::sync::mpsc;
-
-#[derive(Debug)]
-enum ProgressMessage {
-    InReleaseDownloadStart(String),
-    InReleaseDownloadComplete(String),
-    InReleaseParseError(String, PathBuf, UpmError), // url, local_path, error
-    PackagesDownloadStart(String),
-    PackagesDownloadComplete(String),
-    PackagesHashMismatch(String, PathBuf, Vec<u8>, Vec<u8>), // url, local_path, expected, actual
-    PackagesParseError(String, UpmError), // url, error
-    PackagesSaveComplete(String),
-    Info(String),
-    Error(String, UpmError),
-}
-use serde::{Deserialize, Serialize};
 use std::fmt;
 use tokio::task;
 
@@ -52,15 +30,10 @@ pub struct InReleaseTarget {
     pub local_path: PathBuf,
     pub signed_by_key: AptRepositoryKeyInfo,
 }
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PackagesDownloadTarget {
+pub struct PackagesTarget {
     pub url: String,
-    pub local_path: PathBuf,
-    pub hash_type: String, // e.g., "sha256", "md5"
-    pub expected_hash: Vec<u8>,
+    pub expected_hash: Hash,
 }
-// coloredクレートのColorizeトレイトをスコープに持ち込む
 
 // AptRepositoryTypeにDisplayを実装（coloredを使用しない部分）
 impl fmt::Display for AptRepositoryType {
@@ -407,14 +380,14 @@ async fn download_file(url: &str, path: &Path) -> Result<(), UpmError> {
     let response = reqwest::get(url).await?;
     let content = response.bytes().await?;
 
-
-
     let mut file = tokio::fs::File::create(path).await?;
     file.write_all(&content).await?;
     Ok(())
 }
 
-// 署名検証関数 (verify_signature) は削除されました。
+async fn in_release_process(in_release_target: InReleaseTarget) -> Result<Vec<PathBuf>, UpmError> {
+    todo!()
+}
 
 async fn _update_internal(
     entries: Vec<AptRepositoryEntry>,
@@ -422,317 +395,18 @@ async fn _update_internal(
     packages_cache_dir: PathBuf,
     package_list_dir: PathBuf,
 ) -> Result<(), UpmError> {
-    // 1. キャッシュディレクトリとパッケージリストディレクトリが存在することを確認 (TODO 10)
-    tokio::fs::create_dir_all(&in_release_cache_dir).await.map_err(|e| UpmError::IoError(format!("Failed to create InRelease cache directory: {}", e)))?;
-    tokio::fs::create_dir_all(&packages_cache_dir).await.map_err(|e| UpmError::IoError(format!("Failed to create Packages cache directory: {}", e)))?;
-    tokio::fs::create_dir_all(&package_list_dir).await.map_err(|e| UpmError::IoError(format!("Failed to create package list directory: {}", e)))?;
-
+    let mut error_stack: Vec<UpmError> = Vec::new();
+    let prepare_dir = [
+        tokio::fs::create_dir_all(&in_release_cache_dir),
+        tokio::fs::create_dir_all(&packages_cache_dir),
+        tokio::fs::create_dir_all(&package_list_dir),
+    ];
+    futures::future::try_join_all(prepare_dir).await?;
     let in_release_targets = entries.in_release_targets();
-    let total_in_release_targets = in_release_targets.len();
-
-    // 進捗報告用のチャネルを作成 (TODO 8 & 9)
-    let (tx, mut rx) = mpsc::channel::<ProgressMessage>(100);
-
-    // プログレスメッセージを処理するタスクを起動 (TODO 9)
-    let progress_handle = tokio::spawn(async move {
-        let mut in_release_completed = 0;
-        let mut packages_completed = 0;
-        let mut in_release_errors = 0;
-        let mut packages_errors = 0;
-        let mut other_errors = 0;
-
-        while let Some(msg) = rx.recv().await {
-            match msg {
-                ProgressMessage::Info(s) => {
-                    println!("{}", s.cyan());
-                }
-                ProgressMessage::InReleaseDownloadStart(url) => {
-                    println!(
-                        "{} {} {}",
-                        "[Downloading]".blue().bold(),
-                        "InRelease from".dimmed(),
-                        url.yellow()
-                    );
-                }
-                ProgressMessage::InReleaseDownloadComplete(url) => {
-                    in_release_completed += 1;
-                    println!(
-                        "{} {} {} ({}/{})",
-                        "[Downloaded]".green().bold(),
-                        "InRelease from".dimmed(),
-                        url.yellow(),
-                        in_release_completed.to_string().green(),
-                        total_in_release_targets.to_string().green()
-                    );
-                }
-                ProgressMessage::InReleaseParseError(url, local_path, e) => {
-                    in_release_errors += 1;
-                    eprintln!(
-                        "{} {} {} ({}): {}",
-                        "[Error]".red().bold(),
-                        "processing InRelease file from".dimmed(),
-                        url.yellow(),
-                        local_path.display(),
-                        e.to_string().red()
-                    );
-                }
-                ProgressMessage::PackagesDownloadStart(url) => {
-                    println!(
-                        "{} {} {}",
-                        "[Downloading]".blue().bold(),
-                        "Packages from".dimmed(),
-                        url.yellow()
-                    );
-                }
-                ProgressMessage::PackagesDownloadComplete(url) => {
-                    packages_completed += 1;
-                    println!(
-                        "{} {} {}",
-                        "[Downloaded]".green().bold(),
-                        "Packages from".dimmed(),
-                        url.yellow()
-                    );
-                }
-                ProgressMessage::PackagesHashMismatch(url, local_path, expected, actual) => {
-                    packages_errors += 1;
-                    eprintln!(
-                        "{} {} {} ({}): Hash mismatch. Expected {:?}, got {:?}.",
-                        "[Error]".red().bold(),
-                        "verifying Packages file from".dimmed(),
-                        url.yellow(),
-                        local_path.display(),
-                        expected,
-                        actual
-                    );
-                }
-                ProgressMessage::PackagesParseError(url, e) => {
-                    packages_errors += 1;
-                    eprintln!(
-                        "{} {} {}: {}",
-                        "[Error]".red().bold(),
-                        "parsing Packages file from".dimmed(),
-                        url.yellow(),
-                        e.to_string().red()
-                    );
-                }
-                ProgressMessage::PackagesSaveComplete(pkg_name) => {
-                    println!(
-                        "{} {} {}",
-                        "[Saved]".magenta().bold(),
-                        "package info for".dimmed(),
-                        pkg_name.cyan()
-                    );
-                }
-                ProgressMessage::Error(description, e) => {
-                    other_errors += 1;
-                    eprintln!(
-                        "{} {}: {}",
-                        "[Critical Error]".red().bold(),
-                        description.red(),
-                        e.to_string().red()
-                    );
-                }
-            }
-        }
-        // 集計結果の出力 (TODO 11)
-        println!("\n{}", "--- Update Summary ---".bold().blue());
-        println!(
-            "  {}: {}",
-            "InRelease files processed".green(),
-            in_release_completed
-        );
-        if in_release_errors > 0 {
-            println!(
-                "  {}: {}",
-                "InRelease processing errors".red().bold(),
-                in_release_errors
-            );
-        }
-        println!("  {}: {}", "Packages files processed".green(), packages_completed);
-        if packages_errors > 0 {
-            println!(
-                "  {}: {}",
-                "Packages processing errors".red().bold(),
-                packages_errors
-            );
-        }
-        if other_errors > 0 {
-            println!(
-                "  {}: {}",
-                "Other critical errors".red().bold(),
-                other_errors
-            );
-        }
+    let update_process = in_release_targets.into_iter().map(|in_release_target| {
+        tokio::task::spawn(async move { in_release_process(in_release_target) })
     });
-
-    let mut all_packages_targets: Vec<PackagesDownloadTarget> = Vec::new();
-
-    // 2. InReleaseファイルをダウンロードし、パースする
-    let in_release_processing_tasks = in_release_targets.into_iter().map(|target| {
-        let in_release_cache_dir = in_release_cache_dir.clone();
-        let packages_cache_dir = packages_cache_dir.clone();
-        let tx = tx.clone();
-        async move {
-            let local_path = in_release_cache_dir.join(&target.local_path);
-            tx.send(ProgressMessage::InReleaseDownloadStart(target.url.clone()))
-                .await
-                .ok();
-
-            // InReleaseファイルのダウンロード
-            match download_file(&target.url, &local_path).await {
-                Ok(_) => {
-                    tx.send(ProgressMessage::InReleaseDownloadComplete(target.url.clone()))
-                        .await
-                        .ok();
-                    // ダウンロードしたファイルの読み込みとパース
-                    match fs::read_to_string(&local_path).await {
-                        Ok(content) => {
-                            match AptInReleaseInfo::parse(&content, &target.signed_by_key) {
-                                Ok(apt_release_info) => Ok(apt_release_info
-                                    .get_packages_download_targets(&target.url, &packages_cache_dir)),
-                                Err(e) => {
-                                    tx.send(ProgressMessage::InReleaseParseError(
-                                        target.url.clone(),
-                                        local_path,
-                                        e,
-                                    ))
-                                    .await
-                                    .ok();
-                                    Err(UpmError::NoResult) // エラーを伝播させず、空の結果を返すか、エラーを独自処理
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            tx.send(ProgressMessage::InReleaseParseError(
-                                target.url.clone(),
-                                local_path,
-                                e.into(),
-                            ))
-                            .await
-                            .ok();
-                            Err(UpmError::NoResult)
-                        }
-                    }
-                }
-                Err(e) => {
-                    tx.send(ProgressMessage::Error(
-                        format!("Failed to download InRelease from {}", target.url),
-                        e,
-                    ))
-                    .await
-                    .ok();
-                    Err(UpmError::NoResult)
-                }
-            }
-        }
-    });
-
-    let results: Vec<Result<Vec<PackagesDownloadTarget>, UpmError>> =
-        join_all(in_release_processing_tasks).await;
-
-    for result in results {
-        match result {
-            Ok(targets) => all_packages_targets.extend(targets),
-            Err(UpmError::NoResult) => { /* エラーは既にtx経由で報告済み */ }
-            Err(e) => {
-                tx.send(ProgressMessage::Error(
-                    "Unexpected error during InRelease processing".to_string(),
-                    e,
-                ))
-                .await
-                .ok();
-            }
-        }
-    }
-    tx.send(ProgressMessage::Info(format!(
-        "{} InRelease files processed. Found {} Packages targets.",
-        total_in_release_targets,
-        all_packages_targets.len()
-    )))
-    .await
-    .ok();
-
-    // 3. Packagesファイルをダウンロードし、パースし、保存する
-    let package_processing_tasks = all_packages_targets.into_iter().map(|target| {
-        let package_list_dir = package_list_dir.clone();
-        let tx = tx.clone();
-        async move {
-            let local_path = target.local_path.clone();
-            tx.send(ProgressMessage::PackagesDownloadStart(target.url.clone()))
-                .await
-                .ok();
-
-            // Packagesファイルのダウンロード
-            match download_file(&target.url, &local_path).await {
-                Ok(_) => {
-                    tx.send(ProgressMessage::PackagesDownloadComplete(target.url.clone()))
-                        .await
-                        .ok();
-
-                    // ハッシュ値の検証
-                    let mut file = File::open(&local_path).await?;
-                    let mut hasher = Sha256::new();
-                    let mut buffer = Vec::new();
-                    file.read_to_end(&mut buffer).await?;
-                    hasher.update(&buffer);
-                    let hash_result = hasher.finalize().to_vec();
-
-                    if hash_result != target.expected_hash {
-                        tx.send(ProgressMessage::PackagesHashMismatch(
-                            target.url.clone(),
-                            local_path,
-                            target.expected_hash,
-                            hash_result,
-                        ))
-                        .await
-                        .ok();
-                        return Err(UpmError::NoResult); // エラーを伝播させず、空の結果を返す
-                    }
-
-                    // パッケージ情報のパースと保存
-                    match packages_parser::parse_packages_file(&local_path) {
-                        Ok(packages) => {
-                            for pkg in packages {
-                                let pkg_file_name = format!("{}_{}.yaml", pkg.package, pkg.version);
-                                let pkg_save_path = package_list_dir.join(pkg_file_name);
-                                let yaml_content = serde_yaml::to_string(&pkg)?;
-                                tokio::fs::write(&pkg_save_path, yaml_content.as_bytes()).await?;
-                                tx.send(ProgressMessage::PackagesSaveComplete(format!(
-                                    "{}-{}",
-                                    pkg.package, pkg.version
-                                )))
-                                .await
-                                .ok();
-                            }
-                            Ok(())
-                        }
-                        Err(e) => {
-                            tx.send(ProgressMessage::PackagesParseError(target.url.clone(), e))
-                                .await
-                                .ok();
-                            Err(UpmError::NoResult)
-                        }
-                    }
-                }
-                Err(e) => {
-                    tx.send(ProgressMessage::Error(
-                        format!("Failed to download Packages from {}", target.url),
-                        e,
-                    ))
-                    .await
-                    .ok();
-                    Err(UpmError::NoResult)
-                }
-            }
-        }
-    });
-
-    let _ = join_all(package_processing_tasks).await;
-
-    // プログレスメッセージの送信側を全て閉じることで、receiverが終了する
-    drop(tx);
-    progress_handle.await.map_err(|e| UpmError::IoError(format!("Progress display task failed: {}", e)))?;
-
+    let update_result = futures::future::join_all(update_process);
     Ok(())
 }
 
