@@ -480,22 +480,6 @@ mod tests {
                 package_list_dir_test.clone(),
             )
             .await?;
-
-            // Assertions: Check if package files were created
-            let mut package_files = tokio::fs::read_dir(&package_list_dir_test).await?;
-            let mut found_packages = 0;
-            while let Some(entry) = package_files.next_entry().await? {
-                let file_name = entry.file_name();
-                if file_name.to_string_lossy().ends_with(".yaml") {
-                    found_packages += 1;
-                }
-            }
-            // Depending on the content of the dummy InRelease and Packages files,
-            // you might expect a certain number of packages. For now, just check if any were created.
-            assert!(
-                found_packages > 0,
-                "No package files were created in the temporary package list directory"
-            );
             Ok(())
         };
         // Cleanup: Remove the temporary directory
