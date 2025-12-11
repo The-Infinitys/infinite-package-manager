@@ -1,13 +1,12 @@
 mod packages_parser;
 mod parser;
 mod release;
-mod vec_traits; // Restored
+mod vec_traits;
 mod verify;
 use reqwest;
-// use std::io::Cursor; // 削除
 use std::path::Path;
 use std::{collections::HashMap, path::PathBuf, process::Command};
-use tokio::io::AsyncWriteExt; // Add this
+use tokio::io::AsyncWriteExt;
 
 use crate::libs::repo::apt::release::Hash;
 use crate::{libs::repo::apt::vec_traits::AptRepositoryEntryVec, modules::error::UpmError};
@@ -30,6 +29,7 @@ pub struct InReleaseTarget {
     pub local_path: PathBuf,
     pub signed_by_key: AptRepositoryKeyInfo,
 }
+
 pub struct PackagesTarget {
     pub url: String,
     pub expected_hash: Hash,
