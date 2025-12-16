@@ -4,16 +4,19 @@ mod release;
 mod vec_traits;
 mod verify;
 use reqwest;
+use serde::Serialize;
+use serde_yaml::Serializer;
 use std::path::Path;
 use std::{collections::HashMap, path::PathBuf, process::Command};
 use tokio::io::AsyncWriteExt;
 
-use crate::libs::pkg::deb;
-use crate::libs::repo::apt::release::Hash;
+use super::super::pkg::deb;
 use crate::{libs::repo::apt::vec_traits::AptRepositoryEntryVec, modules::error::Error};
 use base64::Engine;
 use parser::list;
 use parser::sources;
+use release::AptReleaseInfo;
+use release::Hash;
 #[derive(Debug, PartialEq, Eq, Clone, Default)]
 pub enum AptRepositoryType {
     #[default]
@@ -377,16 +380,16 @@ impl AptRepositoryEntry {
     }
 }
 
-async fn download_file(url: &str, path: &Path) -> Result<(), Error> {
-    let response = reqwest::get(url).await?;
-    let content = response.bytes().await?;
-
-    let mut file = tokio::fs::File::create(path).await?;
-    file.write_all(&content).await?;
-    Ok(())
-}
-
 async fn in_release_process(in_release_target: InReleaseTarget) -> Result<Vec<PathBuf>, Error> {
+    let url = &in_release_target.url;
+    let path = &in_release_target.local_path;
+    let response = reqwest::get(url).await?;
+    let content = response.bytes().await?.to_vec();
+    let content = String::from_utf8(content)?;
+    let in_release = AptReleaseInfo::parse_signed(&content, &in_release_target.signed_by_key)?;
+    let before_content = std::fs::File::open(path)?;
+    let before_content = std::io::BufReader::new(before_content);
+    let before_in_release: AptReleaseInfo = serde_yaml::from_reader(before_content)?;
     todo!()
 }
 
