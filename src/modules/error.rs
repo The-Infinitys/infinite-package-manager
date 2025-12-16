@@ -124,11 +124,31 @@ impl fmt::Debug for Error {
         self.write_message(f)
     }
 }
+// 構造体はそのまま
+pub struct ErrorDisplay<'a> {
+    error: &'a Error,
+}
+
+// 1. Display実装の修正: ライフタイムパラメータを追加
+impl fmt::Display for ErrorDisplay<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // カスタム表示ロジック
+        writeln!(f, "{}:", "Error".red().bold())?;
+        self.error.write_kind(f)?;
+        self.error.write_message(f)
+    }
+}
+
+// 2. Fromトレイトの実装: &ErrorからErrorDisplayへの変換を定義
+// これにより、&Errorに対して .into() を呼び出すと ErrorDisplay が得られる
+impl<'a> From<&'a Error> for ErrorDisplay<'a> {
+    fn from(error: &'a Error) -> Self {
+        ErrorDisplay { error }
+    }
+}
 
 impl Error {
-    pub fn display(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "{}:", "Error".red().bold())?;
-        self.write_kind(f)?;
-        self.write_message(f)
+    pub fn display(&self) -> ErrorDisplay<'_> {
+        self.into() // impl From<&'a Error> for ErrorDisplay<'a> のおかげで使える
     }
 }

@@ -404,9 +404,32 @@ async fn _update_internal(
     futures::future::try_join_all(prepare_dir).await?;
     let in_release_targets = entries.in_release_targets();
     let update_process = in_release_targets.into_iter().map(|in_release_target| {
-        tokio::task::spawn(async move { in_release_process(in_release_target) })
+        tokio::task::spawn(async move { in_release_process(in_release_target).await }) // in_release_processもasyncだと仮定してawaitを追加
     });
-    let update_result = futures::future::join_all(update_process);
+    let update_result = futures::future::join_all(update_process).await;
+    for task_result in update_result {
+        match task_result {
+            Ok(process_result) => {
+                if let Err(e) = process_result {
+                    error_stack.push(e);
+                }
+            }
+            Err(join_error) => {
+                error_stack.push(join_error.into());
+            }
+        }
+    }
+    if !error_stack.is_empty() {
+        eprintln!(
+            "\n--- {} {} ---",
+            error_stack.len(),
+            "Error was happened".red().bold()
+        );
+        for e in error_stack {
+            eprintln!("{}",e.display());
+        }
+        eprintln!("------------------------------------------");
+    }
     Ok(())
 }
 
