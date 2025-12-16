@@ -4,19 +4,14 @@ mod release;
 mod vec_traits;
 mod verify;
 use reqwest;
-use serde::Serialize;
-use serde_yaml::Serializer;
 use std::path::Path;
 use std::{collections::HashMap, path::PathBuf, process::Command};
-use tokio::io::AsyncWriteExt;
 
-use super::super::pkg::deb;
+use crate::libs::repo::apt::release::{AptReleaseInfo, Hash};
 use crate::{libs::repo::apt::vec_traits::AptRepositoryEntryVec, modules::error::Error};
 use base64::Engine;
 use parser::list;
 use parser::sources;
-use release::AptReleaseInfo;
-use release::Hash;
 #[derive(Debug, PartialEq, Eq, Clone, Default)]
 pub enum AptRepositoryType {
     #[default]
@@ -393,11 +388,6 @@ async fn in_release_process(in_release_target: InReleaseTarget) -> Result<Vec<Pa
     todo!()
 }
 
-async fn packages_process(
-    packages_target: PackagesTarget,
-) -> Result<Vec<deb::DebPackageEntry>, Error> {
-    todo!()
-}
 
 async fn _update_internal(
     entries: Vec<AptRepositoryEntry>,
