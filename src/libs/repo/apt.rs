@@ -10,7 +10,11 @@ use std::path::Path;
 use std::{collections::HashMap, path::PathBuf, process::Command};
 use tokio::io::AsyncWriteExt;
 
+<<<<<<< Updated upstream
 use super::super::pkg::deb;
+=======
+use crate::libs::repo::apt::release::{AptReleaseInfo, Hash};
+>>>>>>> Stashed changes
 use crate::{libs::repo::apt::vec_traits::AptRepositoryEntryVec, modules::error::Error};
 use base64::Engine;
 use parser::list;
@@ -393,9 +397,17 @@ async fn in_release_process(in_release_target: InReleaseTarget) -> Result<Vec<Pa
     todo!()
 }
 
+<<<<<<< Updated upstream
 async fn packages_process(
     packages_target: PackagesTarget,
 ) -> Result<Vec<deb::DebPackageEntry>, Error> {
+=======
+async fn in_release_process(in_release_target: InReleaseTarget) -> Result<Vec<PathBuf>, Error> {
+    download_file(&in_release_target.url, &in_release_target.local_path).await?;
+    let content= tokio::fs::read(&in_release_target.local_path).await?;
+    let content=String::from_utf8(content)?;
+    let in_release=AptReleaseInfo::parse_signed(&content, &in_release_target.signed_by_key)?;
+>>>>>>> Stashed changes
     todo!()
 }
 
