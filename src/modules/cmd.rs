@@ -1,7 +1,7 @@
 use clap::{Args, Parser, Subcommand};
 
 use crate::libs::{pkg, repo};
-use crate::modules::error::UpmError;
+use crate::modules::error::Error;
 
 #[derive(Debug, Parser)]
 #[clap(
@@ -86,7 +86,7 @@ pub enum PkgCommands {
 }
 
 impl Cli {
-    pub async fn execute(&self) -> Result<(), UpmError> {
+    pub async fn execute(&self) -> Result<(), Error> {
         match &self.subcommand {
             SubCommands::Repo(repo_args) => match &repo_args.command {
                 RepoCommands::List => {
@@ -103,7 +103,7 @@ impl Cli {
                         name, distro, components
                     );
                     // Placeholder for actual repo add logic
-                    Err(UpmError::Other(format!(
+                    Err(Error::Other(format!(
                         "Repository add not yet implemented for: {}",
                         name
                     )))
@@ -111,7 +111,7 @@ impl Cli {
                 RepoCommands::Remove { name } => {
                     println!("Removing repository: {}", name);
                     // Placeholder for actual repo remove logic
-                    Err(UpmError::Other(format!(
+                    Err(Error::Other(format!(
                         "Repository remove not yet implemented for: {}",
                         name
                     )))
@@ -125,7 +125,7 @@ impl Cli {
                 PkgCommands::Install { name } => {
                     println!("Installing package: {}", name);
                     // Placeholder for actual pkg install logic
-                    Err(UpmError::Other(format!(
+                    Err(Error::Other(format!(
                         "Package install not yet implemented for: {}",
                         name
                     )))
@@ -133,7 +133,7 @@ impl Cli {
                 PkgCommands::Remove { name } => {
                     println!("Removing package: {}", name);
                     // Placeholder for actual pkg remove logic
-                    Err(UpmError::Other(format!(
+                    Err(Error::Other(format!(
                         "Package remove not yet implemented for: {}",
                         name
                     )))
@@ -141,21 +141,21 @@ impl Cli {
                 PkgCommands::Update => {
                     println!("Updating package lists...");
                     // Placeholder for actual pkg update logic
-                    Err(UpmError::Other(
+                    Err(Error::Other(
                         "Package update not yet implemented".to_string(),
                     ))
                 }
                 PkgCommands::Upgrade => {
                     println!("Upgrading packages...");
                     // Placeholder for actual pkg upgrade logic
-                    Err(UpmError::Other(
+                    Err(Error::Other(
                         "Package upgrade not yet implemented".to_string(),
                     ))
                 }
                 PkgCommands::Search { query } => {
                     println!("Searching for package: {}", query);
                     // Placeholder for actual pkg search logic
-                    Err(UpmError::Other(format!(
+                    Err(Error::Other(format!(
                         "Package search not yet implemented for: {}",
                         query
                     )))

@@ -1,4 +1,4 @@
-use crate::modules::error::UpmError;
+use crate::modules::error::Error;
 use sequoia_openpgp::{
     Cert, KeyHandle,
     anyhow::{self, Result},
@@ -17,7 +17,7 @@ struct Helper {
 }
 
 impl Helper {
-    pub fn new(signature: Option<impl AsRef<[u8]>>) -> Result<Self, UpmError> {
+    pub fn new(signature: Option<impl AsRef<[u8]>>) -> Result<Self, Error> {
         let mut certs_vec = Vec::new();
         if let Some(signature) = signature {
             let signature = signature.as_ref();
@@ -98,7 +98,7 @@ impl VerificationHelper for Helper {
 pub fn verification(
     signed_context: impl AsRef<[u8]>,
     public_gpg: Option<impl AsRef<[u8]>>,
-) -> Result<Vec<u8>, UpmError> {
+) -> Result<Vec<u8>, Error> {
     let signed_context = signed_context.as_ref();
     let p = &StandardPolicy::new();
     let h = Helper::new(public_gpg)?;
@@ -113,7 +113,7 @@ mod tests {
 
     use super::*;
     #[test]
-    fn test_verifier() -> Result<(), UpmError> {
+    fn test_verifier() -> Result<(), Error> {
         let signed_message = include_str!("../../../../tests/verify/original_text.txt.asc");
         let original_message = include_str!("../../../../tests/verify/original_text.txt");
         let public_gpg = include_bytes!("../../../../tests/verify/public.gpg");

@@ -4,11 +4,11 @@ use std::{collections::HashMap, path::PathBuf, str::FromStr};
 
 use crate::{
     libs::repo::apt::{AptRepositoryKeyInfo, verify::verification},
-    modules::error::UpmError,
+    modules::error::Error,
 };
-fn hex_string_to_vec_u8(hex: &str) -> Result<Vec<u8>, UpmError> {
+fn hex_string_to_vec_u8(hex: &str) -> Result<Vec<u8>, Error> {
     if hex.len() % 2 != 0 {
-        return Err(UpmError::ParseError(
+        return Err(Error::ParseError(
             "Hex string must have an even number of digits.".to_string(),
         ));
     }
@@ -19,7 +19,7 @@ fn hex_string_to_vec_u8(hex: &str) -> Result<Vec<u8>, UpmError> {
         let byte_str = &hex[i..i + 2];
         match u8::from_str_radix(byte_str, 16) {
             Ok(byte) => bytes.push(byte),
-            Err(_) => return Err(UpmError::ParseError("Invalid hex string".to_string())),
+            Err(_) => return Err(Error::ParseError("Invalid hex string".to_string())),
         }
         i += 2;
     }
@@ -27,7 +27,7 @@ fn hex_string_to_vec_u8(hex: &str) -> Result<Vec<u8>, UpmError> {
 }
 
 impl TryFrom<&str> for FileHashMetaData {
-    type Error = UpmError;
+    type Error = Error;
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         let value = value.trim();
         let contents = value.split_ascii_whitespace().collect::<Vec<&str>>();
@@ -40,7 +40,7 @@ impl TryFrom<&str> for FileHashMetaData {
             let path = PathBuf::from(path);
             Ok(Self { hash, size, path })
         } else {
-            Err(UpmError::ParseError(format!(
+            Err(Error::ParseError(format!(
                 "failed to parse FileHashMetadata, {}",
                 value
             )))
@@ -81,14 +81,14 @@ pub struct AptReleaseInfo {
 }
 
 impl AptReleaseInfo {
-    pub fn parse_signed(content: &str, key: &AptRepositoryKeyInfo) -> Result<Self, UpmError> {
+    pub fn parse_signed(content: &str, key: &AptRepositoryKeyInfo) -> Result<Self, Error> {
         let public_gpg = key.read_owned();
         let verified_context = verification(content, public_gpg)?;
         let verified_context = String::from_utf8(verified_context)?;
         AptReleaseInfo::parse(&verified_context)
     }
     /// 文字列からAptReleaseInfoをパースする
-    pub fn parse(content: &str) -> Result<Self, UpmError> {
+    pub fn parse(content: &str) -> Result<Self, Error> {
         let mut release_info = AptReleaseInfo::default();
         let deb822_data = deb822_lossless::Deb822::from_str(content)?;
 
@@ -101,12 +101,12 @@ impl AptReleaseInfo {
         };
 
         // ヘルパー関数: Hashメタデータをパース
-        let parse_hash_meta = |value: &str| -> Result<Vec<FileHashMetaData>, UpmError> {
+        let parse_hash_meta = |value: &str| -> Result<Vec<FileHashMetaData>, Error> {
             value
                 .split('\n')
                 .filter(|line| !line.trim().is_empty())
                 .map(FileHashMetaData::try_from)
-                .collect::<Result<Vec<FileHashMetaData>, UpmError>>()
+                .collect::<Result<Vec<FileHashMetaData>, Error>>()
         };
 
         // Deb822形式は基本的に単一のパラグラフで構成されるため、最初のパラグラフのみを処理
@@ -179,7 +179,7 @@ impl Hash {
     ///
     /// # Returns
     /// ハッシュ値のバイトベクタ、またはサポートされていないハッシュタイプの場合はエラー
-    pub fn _calculate_hash(&self, data: impl AsRef<[u8]>) -> Result<Vec<u8>, UpmError> {
+    pub fn _calculate_hash(&self, data: impl AsRef<[u8]>) -> Result<Vec<u8>, Error> {
         match self {
             Self::Sha(i) => match i {
                 256 => {
@@ -192,7 +192,7 @@ impl Hash {
                     hasher.update(data);
                     Ok(hasher.finalize().to_vec())
                 }
-                _ => Err(UpmError::Unsupported),
+                _ => Err(Error::Unsupported),
             },
             Self::Md5sum => {
                 let digest = md5::compute(data);
@@ -207,7 +207,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parse_test() -> Result<(), UpmError> {
+    fn parse_test() -> Result<(), Error> {
         let in_release_str = include_str!("../../../../tests/apt/InRelease");
         let release_str = include_str!("../../../../tests/apt/Release");
         let in_release = AptReleaseInfo::parse_signed(in_release_str, &AptRepositoryKeyInfo::None)?;

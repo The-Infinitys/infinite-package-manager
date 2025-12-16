@@ -9,7 +9,7 @@ use std::{collections::HashMap, path::PathBuf, process::Command};
 use tokio::io::AsyncWriteExt;
 
 use crate::libs::repo::apt::release::Hash;
-use crate::{libs::repo::apt::vec_traits::AptRepositoryEntryVec, modules::error::UpmError};
+use crate::{libs::repo::apt::vec_traits::AptRepositoryEntryVec, modules::error::Error};
 use base64::Engine;
 use parser::list;
 use parser::sources;
@@ -248,7 +248,7 @@ impl AptRepositoryEntry {
             options,
         }
     }
-    pub fn load(path: impl AsRef<Path>) -> Result<Vec<Self>, UpmError> {
+    pub fn load(path: impl AsRef<Path>) -> Result<Vec<Self>, Error> {
         let path = path.as_ref();
         let ext = path.extension();
         match ext {
@@ -257,16 +257,16 @@ impl AptRepositoryEntry {
                 match ext.as_ref() {
                     "sources" => sources(path),
                     "list" => list(path),
-                    _ => Err(UpmError::ParseExtensionError(format!("\".{}\"", ext))),
+                    _ => Err(Error::ParseExtensionError(format!("\".{}\"", ext))),
                 }
             }
-            None => Err(UpmError::ParseExtensionError("None".to_string())),
+            None => Err(Error::ParseExtensionError("None".to_string())),
         }
     }
     pub async fn _load_all_internal(
         apt_sources_dir: impl AsRef<Path>,
         apt_sources_list_dir: impl AsRef<Path>,
-    ) -> Result<Vec<Self>, UpmError> {
+    ) -> Result<Vec<Self>, Error> {
         let parent_file = apt_sources_dir.as_ref().to_path_buf();
         let parent_dir = apt_sources_list_dir.as_ref().to_path_buf();
 
@@ -326,7 +326,7 @@ impl AptRepositoryEntry {
     }
 
     /// すべてのリポジトリ設定を読み込み、含まれるすべての公開鍵のバイナリの配列も取得する
-    pub async fn load_all() -> Result<Vec<Self>, UpmError> {
+    pub async fn load_all() -> Result<Vec<Self>, Error> {
         let apt_sources_dir = PathBuf::from("/etc/apt/sources.list");
         let apt_sources_list_dir = PathBuf::from("/etc/apt/sources.list.d");
         let entries = Self::_load_all_internal(apt_sources_dir, apt_sources_list_dir).await?;
@@ -376,7 +376,7 @@ impl AptRepositoryEntry {
     }
 }
 
-async fn download_file(url: &str, path: &Path) -> Result<(), UpmError> {
+async fn download_file(url: &str, path: &Path) -> Result<(), Error> {
     let response = reqwest::get(url).await?;
     let content = response.bytes().await?;
 
@@ -385,7 +385,7 @@ async fn download_file(url: &str, path: &Path) -> Result<(), UpmError> {
     Ok(())
 }
 
-async fn in_release_process(in_release_target: InReleaseTarget) -> Result<Vec<PathBuf>, UpmError> {
+async fn in_release_process(in_release_target: InReleaseTarget) -> Result<Vec<PathBuf>, Error> {
     todo!()
 }
 
@@ -394,8 +394,8 @@ async fn _update_internal(
     in_release_cache_dir: PathBuf,
     packages_cache_dir: PathBuf,
     package_list_dir: PathBuf,
-) -> Result<(), UpmError> {
-    let mut error_stack: Vec<UpmError> = Vec::new();
+) -> Result<(), Error> {
+    let mut error_stack: Vec<Error> = Vec::new();
     let prepare_dir = [
         tokio::fs::create_dir_all(&in_release_cache_dir),
         tokio::fs::create_dir_all(&packages_cache_dir),
@@ -411,7 +411,7 @@ async fn _update_internal(
 }
 
 // APTリポジトリのインデックスを非同期に更新する
-pub async fn update() -> Result<(), UpmError> {
+pub async fn update() -> Result<(), Error> {
     let entries = AptRepositoryEntry::load_all().await?;
     let in_release_cache_dir = PathBuf::from("/var/lib/upm/caches/lists/releases");
     let packages_cache_dir = PathBuf::from("/var/lib/upm/caches/lists/packages");
@@ -431,7 +431,7 @@ mod tests {
     // uuid クレートを使用するために、Cargo.toml に追加が必要です (例: uuid = { version = "1.0", features = ["v4"] })
     #[tokio::main]
     #[test]
-    async fn update_test() -> Result<(), UpmError> {
+    async fn update_test() -> Result<(), Error> {
         let test_sources_content = include_str!("../../../tests/apt/update/ubuntu.sources");
         let test_signature_content =
             include_bytes!("../../../tests/apt/update/ubuntu-archive-keyring.gpg");
@@ -439,7 +439,7 @@ mod tests {
         // Create a unique temporary directory for this test
         let temp_test_dir = std::env::temp_dir().join(format!("upm_test_{}", uuid::Uuid::new_v4()));
         tokio::fs::create_dir_all(&temp_test_dir).await?;
-        let result: Result<(), UpmError> = {
+        let result: Result<(), Error> = {
             // Define temporary paths for source file, keyring, and cache directories within the test's temp dir
             let temp_sources_file = temp_test_dir.join("ubuntu.sources");
             let temp_keyring_dir = temp_test_dir.join("keyrings");

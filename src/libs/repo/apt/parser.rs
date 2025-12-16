@@ -1,7 +1,7 @@
 use super::AptRepositoryEntry;
 use super::AptRepositoryType;
 use crate::libs::repo::apt::AptRepositoryKeyInfo;
-use crate::modules::error::UpmError;
+use crate::modules::error::Error;
 use base64::Engine;
 use deb822_lossless::Deb822;
 use std::fs;
@@ -9,7 +9,7 @@ use std::io::{self, BufRead};
 use std::path::Path;
 use std::path::PathBuf;
 /// sources.list形式のファイルからリポジトリエントリを解析します。
-pub fn list(path: impl AsRef<Path>) -> Result<Vec<AptRepositoryEntry>, UpmError> {
+pub fn list(path: impl AsRef<Path>) -> Result<Vec<AptRepositoryEntry>, Error> {
     let file = fs::File::open(path)?;
     let reader = io::BufReader::new(file);
     let mut repo_entries: Vec<AptRepositoryEntry> = vec![];
@@ -109,7 +109,7 @@ pub fn list(path: impl AsRef<Path>) -> Result<Vec<AptRepositoryEntry>, UpmError>
     Ok(repo_entries)
 }
 
-pub fn sources(path: impl AsRef<Path>) -> Result<Vec<AptRepositoryEntry>, UpmError> {
+pub fn sources(path: impl AsRef<Path>) -> Result<Vec<AptRepositoryEntry>, Error> {
     let deb_info = Deb822::from_file(&path)?.paragraphs();
     let mut repo_entries: Vec<AptRepositoryEntry> = vec![];
     for info in deb_info {
@@ -199,7 +199,7 @@ mod tests {
     use super::*;
     // list 形式のテスト用関数
     #[test]
-    fn test_read_sources_list() -> Result<(), UpmError> {
+    fn test_read_sources_list() -> Result<(), Error> {
         let manifest_dir = env!("CARGO_MANIFEST_DIR");
         let test_file_path = format!("{}/tests/apt/debian.list", manifest_dir);
         println!("Testing file path: {}", test_file_path);
@@ -220,7 +220,7 @@ mod tests {
         Ok(())
     }
     #[test]
-    fn test_read_ubuntu_sources() -> Result<(), UpmError> {
+    fn test_read_ubuntu_sources() -> Result<(), Error> {
         // 1. **ファイルのパスを作成**
         // `env!("CARGO_MANIFEST_DIR")` は Cargo.toml が存在するディレクトリ (プロジェクトルート) を取得します。
         // それを基点に相対パスを構築するのが、テストでファイルを扱う際の標準的な方法です。

@@ -1,5 +1,5 @@
 use super::DebPackageEntry;
-use crate::modules::error::UpmError;
+use crate::modules::error::Error;
 use deb822_lossless::Deb822;
 use std::path::Path;
 
@@ -12,7 +12,7 @@ fn parse_comma_separated_list(value: String) -> Vec<String> {
         .collect()
 }
 
-pub fn parse_deb_status_file(path: impl AsRef<Path>) -> Result<Vec<DebPackageEntry>, UpmError> {
+pub fn parse_deb_status_file(path: impl AsRef<Path>) -> Result<Vec<DebPackageEntry>, Error> {
     let deb_info = Deb822::from_file(&path)?.paragraphs();
     let mut package_entries: Vec<DebPackageEntry> = vec![];
     for info in deb_info {
@@ -90,7 +90,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_deb_status_file() -> Result<(), UpmError> {
+    fn test_parse_deb_status_file() -> Result<(), Error> {
         // テスト用のダミーapt-controlファイルをシミュレート
         let content = include_str!("../../../../tests/apt/control");
         let mut temp_file = NamedTempFile::new()?;

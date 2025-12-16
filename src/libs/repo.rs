@@ -4,7 +4,7 @@ use std::process::Command;
 
 use crate::{
     libs::system::{self, PackageManager},
-    modules::error::UpmError,
+    modules::error::Error,
 };
 
 mod apt;
@@ -23,7 +23,7 @@ impl RepositoryEntry {
     pub(crate) async fn _load_internal(
         apt_sources_dir: impl AsRef<Path>,
         apt_sources_list_dir: impl AsRef<Path>,
-    ) -> Result<Vec<Self>, UpmError> {
+    ) -> Result<Vec<Self>, Error> {
         match system::PackageManager::get() {
             PackageManager::Dpkg => {
                 let entries = apt::AptRepositoryEntry::_load_all_internal(
@@ -33,10 +33,10 @@ impl RepositoryEntry {
                 .await?;
                 Ok(entries.into_iter().map(RepositoryEntry::Apt).collect())
             }
-            _ => Err(UpmError::Unsupported),
+            _ => Err(Error::Unsupported),
         }
     }
-    pub async fn load() -> Result<Vec<Self>, UpmError> {
+    pub async fn load() -> Result<Vec<Self>, Error> {
         let apt_sources_dir = PathBuf::from("/etc/apt/sources.list");
         let apt_sources_list_dir = PathBuf::from("/etc/apt/sources.list.d");
         Self::_load_internal(apt_sources_dir, apt_sources_list_dir).await
@@ -46,7 +46,7 @@ impl RepositoryEntry {
 pub async fn _print_list_internal(
     apt_sources_dir: impl AsRef<Path>,
     apt_sources_list_dir: impl AsRef<Path>,
-) -> Result<(), UpmError> {
+) -> Result<(), Error> {
     let entries = RepositoryEntry::_load_internal(apt_sources_dir, apt_sources_list_dir).await?;
     for entry in entries {
         println!("{}", entry);
@@ -54,25 +54,25 @@ pub async fn _print_list_internal(
     Ok(())
 }
 
-pub async fn print_list() -> Result<(), UpmError> {
+pub async fn print_list() -> Result<(), Error> {
     let apt_sources_dir = PathBuf::from("/etc/apt/sources.list");
     let apt_sources_list_dir = PathBuf::from("/etc/apt/sources.list.d");
     _print_list_internal(apt_sources_dir, apt_sources_list_dir).await
 }
 
-pub async fn update() -> Result<(), UpmError> {
+pub async fn update() -> Result<(), Error> {
     let output = Command::new("id").arg("-u").output()?;
     let uid = String::from_utf8_lossy(&output.stdout)
         .trim()
         .parse::<u32>()
-        .map_err(|e| UpmError::Other(format!("Failed to parse UID: {}", e)))?;
+        .map_err(|e| Error::Other(format!("Failed to parse UID: {}", e)))?;
 
     if uid != 0 {
-        return Err(UpmError::Permission);
+        return Err(Error::Permission);
     }
 
     match system::PackageManager::get() {
         PackageManager::Dpkg => apt::update().await,
-        _ => Err(UpmError::Unsupported),
+        _ => Err(Error::Unsupported),
     }
 }

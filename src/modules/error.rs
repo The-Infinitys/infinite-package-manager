@@ -3,7 +3,7 @@ use std::fmt;
 use std::path::PathBuf;
 
 #[derive(thiserror::Error)]
-pub enum UpmError {
+pub enum Error {
     // 組み込みのFromトレイトとthiserrorのマクロを使用
     #[error("I/O Error: {0}")]
     Io(#[from] std::io::Error),
@@ -46,7 +46,7 @@ pub enum UpmError {
     NoResult, // 新しく追加
 }
 
-impl UpmError {
+impl Error {
     /// エラーのKindを色付きでFormatterに出力するヘルパー関数
     fn write_kind(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // "kind"というラベルをシアンで出力し、対応するバリアント名を黄色で出力
@@ -116,7 +116,7 @@ impl UpmError {
 }
 
 // fmt::Debug の実装
-impl fmt::Debug for UpmError {
+impl fmt::Debug for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let overwrite_alias = "\x1b\r";
         writeln!(f, "{}{}", overwrite_alias, "Error".red().bold())?;

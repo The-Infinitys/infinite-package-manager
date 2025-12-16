@@ -3,7 +3,7 @@ mod parser;
 use deb822_lossless::Deb822;
 use std::{collections::HashMap, path::Path, str::FromStr};
 
-use crate::modules::error::UpmError;
+use crate::modules::error::Error;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -130,7 +130,7 @@ impl Default for DebPackageEntry {
 }
 
 impl DebPackageEntry {
-    pub fn load_from_str(content: &str) -> Result<Self, UpmError> {
+    pub fn load_from_str(content: &str) -> Result<Self, Error> {
         let deb_info = Deb822::from_str(content)?;
         let mut package_entry = DebPackageEntry::new();
 
@@ -196,7 +196,7 @@ impl DebPackageEntry {
         }
 
         if package_entry.package.is_empty() {
-            Err(UpmError::ParseError(
+            Err(Error::ParseError(
                 "No package information found".to_string(),
             ))
         } else {
@@ -234,15 +234,15 @@ impl DebPackageEntry {
         }
     }
 
-    pub fn load(path: impl AsRef<Path>) -> Result<Vec<Self>, UpmError> {
+    pub fn load(path: impl AsRef<Path>) -> Result<Vec<Self>, Error> {
         parser::parse_deb_status_file(path)
     }
 
-    pub fn _load_all_internal(status_file_path: impl AsRef<Path>) -> Result<Vec<Self>, UpmError> {
+    pub fn _load_all_internal(status_file_path: impl AsRef<Path>) -> Result<Vec<Self>, Error> {
         Self::load(status_file_path)
     }
 
-    pub fn load_all() -> Result<Vec<Self>, UpmError> {
+    pub fn load_all() -> Result<Vec<Self>, Error> {
         let status_file_path = Path::new("/var/lib/dpkg/status");
         Self::_load_all_internal(status_file_path)
     }
