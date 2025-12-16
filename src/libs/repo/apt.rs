@@ -8,6 +8,7 @@ use std::path::Path;
 use std::{collections::HashMap, path::PathBuf, process::Command};
 use tokio::io::AsyncWriteExt;
 
+use crate::libs::pkg::deb;
 use crate::libs::repo::apt::release::Hash;
 use crate::{libs::repo::apt::vec_traits::AptRepositoryEntryVec, modules::error::Error};
 use base64::Engine;
@@ -389,6 +390,12 @@ async fn in_release_process(in_release_target: InReleaseTarget) -> Result<Vec<Pa
     todo!()
 }
 
+async fn packages_process(
+    packages_target: PackagesTarget,
+) -> Result<Vec<deb::DebPackageEntry>, Error> {
+    todo!()
+}
+
 async fn _update_internal(
     entries: Vec<AptRepositoryEntry>,
     in_release_cache_dir: PathBuf,
@@ -426,7 +433,7 @@ async fn _update_internal(
             "Error was happened".red().bold()
         );
         for e in error_stack {
-            eprintln!("{}",e.display());
+            eprintln!("{}", e.display());
         }
         eprintln!("------------------------------------------");
     }
