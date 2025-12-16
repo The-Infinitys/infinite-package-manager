@@ -124,3 +124,11 @@ impl fmt::Debug for Error {
         self.write_message(f)
     }
 }
+
+impl Error {
+    pub fn display(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "{}:", "Error".red().bold())?;
+        self.write_kind(f)?;
+        self.write_message(f)
+    }
+}
