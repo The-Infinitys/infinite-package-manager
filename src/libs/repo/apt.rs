@@ -11,7 +11,11 @@ use std::{collections::HashMap, path::PathBuf, process::Command};
 use tokio::io::AsyncWriteExt;
 
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
 use super::super::pkg::deb;
+=======
+use crate::libs::repo::apt::release::{AptReleaseInfo, Hash};
+>>>>>>> Stashed changes
 =======
 use crate::libs::repo::apt::release::{AptReleaseInfo, Hash};
 >>>>>>> Stashed changes
@@ -407,6 +411,9 @@ async fn in_release_process(in_release_target: InReleaseTarget) -> Result<Vec<Pa
     let content= tokio::fs::read(&in_release_target.local_path).await?;
     let content=String::from_utf8(content)?;
     let in_release=AptReleaseInfo::parse_signed(&content, &in_release_target.signed_by_key)?;
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
     todo!()
 }
