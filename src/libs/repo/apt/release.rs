@@ -147,21 +147,30 @@ impl AptReleaseInfo {
                     }
                     "MD5Sum" => {
                         release_info.md5sum = parse_hash_meta(value)?;
-                        release_info
-                            .packages_urls
-                            .extend(release_info.md5sum.iter().map(|f| f.path.to_string_lossy().to_string()));
+                        release_info.packages_urls.extend(
+                            release_info
+                                .md5sum
+                                .iter()
+                                .map(|f| f.path.to_string_lossy().to_string()),
+                        );
                     }
                     "SHA1" => {
                         release_info.sha1 = parse_hash_meta(value)?;
-                        release_info
-                            .packages_urls
-                            .extend(release_info.sha1.iter().map(|f| f.path.to_string_lossy().to_string()));
+                        release_info.packages_urls.extend(
+                            release_info
+                                .sha1
+                                .iter()
+                                .map(|f| f.path.to_string_lossy().to_string()),
+                        );
                     }
                     "SHA256" => {
                         release_info.sha256 = parse_hash_meta(value)?;
-                        release_info
-                            .packages_urls
-                            .extend(release_info.sha256.iter().map(|f| f.path.to_string_lossy().to_string()));
+                        release_info.packages_urls.extend(
+                            release_info
+                                .sha256
+                                .iter()
+                                .map(|f| f.path.to_string_lossy().to_string()),
+                        );
                     }
                     _ => {
                         release_info.fields.insert(key, value.to_string());

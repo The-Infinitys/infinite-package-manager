@@ -19,9 +19,7 @@ impl Display for PackageEntry {
     }
 }
 impl PackageEntry {
-    pub(crate) fn _load_internal(
-        status_file_path: impl AsRef<Path>,
-    ) -> Result<Vec<Self>, Error> {
+    pub(crate) fn _load_internal(status_file_path: impl AsRef<Path>) -> Result<Vec<Self>, Error> {
         match system::PackageManager::get() {
             PackageManager::Dpkg => {
                 let entries = deb::DebPackageEntry::_load_all_internal(status_file_path)?;

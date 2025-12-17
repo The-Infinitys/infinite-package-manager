@@ -7,12 +7,13 @@ use xz2::read::XzDecoder;
 
 use crate::{libs::pkg::deb::DebPackageEntry, modules::error::Error};
 
-pub async fn parse_packages_file(
-    url: &str,
-    file_name: &str,
-) -> Result<Vec<DebPackageEntry>, Error> {
-    let full_url = format!("{}/{}", url, file_name);
-    let response = reqwest::get(&full_url).await?.bytes().await?.to_vec();
+pub async fn parse_packages_file(url: &str) -> Result<Vec<DebPackageEntry>, Error> {
+    let file_name = url
+        .rsplit_once('/')
+        .map(|(_, suffix)| suffix)
+        .unwrap_or(url)
+        .to_string();
+    let response = reqwest::get(url).await?.bytes().await?.to_vec();
     let mut decompressed_data = Vec::new();
     let reader: Box<dyn Read> = if file_name.ends_with(".gz") {
         Box::new(GzDecoder::new(response.as_slice()))

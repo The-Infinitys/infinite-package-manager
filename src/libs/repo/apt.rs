@@ -29,7 +29,16 @@ pub struct InReleaseTarget {
     pub signed_by_key: AptRepositoryKeyInfo,
     pub packages_urls: Vec<String>,
 }
-
+#[derive(Debug, Clone)]
+pub struct PackagesTarget {
+    pub url: String,
+    pub packages_dir: PathBuf,
+}
+impl PackagesTarget {
+    pub fn new(url: String, packages_dir: PathBuf) -> Self {
+        Self { url, packages_dir }
+    }
+}
 // AptRepositoryTypeにDisplayを実装（coloredを使用しない部分）
 impl fmt::Display for AptRepositoryType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -370,75 +379,129 @@ impl AptRepositoryEntry {
             .collect()
     }
 }
-
-async fn in_release_process(in_release_target: InReleaseTarget) -> Result<Vec<PathBuf>, Error> {
+async fn packages_process(packages_target: PackagesTarget) -> Result<(), Error> {
+    let url = &packages_target.url;
+    let _packages = packages_parser::parse_packages_file(url).await;
+    Ok(())
+}
+async fn in_release_process(in_release_target: InReleaseTarget) -> Result<Vec<String>, Error> {
     let url = &in_release_target.url;
     let path = &in_release_target.local_path;
+    let packages_urls = &in_release_target.packages_urls;
     let response = reqwest::get(url).await?;
     let content = response.bytes().await?.to_vec();
     let content = String::from_utf8(content)?;
     let in_release = AptReleaseInfo::parse_signed(&content, &in_release_target.signed_by_key)?;
-    let _before_content = std::fs::File::open(path)?; // Mark as unused
-    let _before_content = std::io::BufReader::new(_before_content);
-    let _before_in_release: AptReleaseInfo = serde_yaml::from_reader(_before_content)?; // Mark as unused
-
-    let mut all_parsed_package_entries = Vec::new();
-
-    // in_release_target.url: e.g., "http://example.com/dists/suite/InRelease"
-    // We need "http://example.com/dists/suite/" as the base for packages
+    let before_content = std::fs::File::open(path)?;
+    let before_content = std::io::BufReader::new(before_content);
+    let before_in_release: AptReleaseInfo = serde_yaml::from_reader(before_content)?;
     let base_url_for_packages = url
         .rsplit_once('/')
         .map(|(prefix, _)| prefix)
         .unwrap_or(url)
         .to_string();
+    use futures::stream::{self, StreamExt};
+    let changed_pathes = packages_urls.iter().filter(|path| {
+        if let Some(current_hash) = in_release.sha1.iter().find(|d| d.path == **path) {
+            if let Some(before_hash) = before_in_release.sha1.iter().find(|d| d.path == **path) {
+                current_hash.hash != before_hash.hash
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    });
+    let all_parsed_package_entries = stream::iter(changed_pathes)
+        .then(|relative_package_path| {
+            let base_url_for_packages = base_url_for_packages.clone();
+            async move {
+                let (package_dir_relative, _) =
+                    relative_package_path.rsplit_once('/').ok_or_else(|| {
+                        Error::ParseError(format!(
+                            "Invalid package path: {}",
+                            &relative_package_path
+                        ))
+                    })?;
 
-    for relative_package_path in in_release.packages_urls {
-        // relative_package_path: e.g., "main/binary-amd64/Packages.xz"
-        // We need to split this into the base_url for the parser and the file_name
-        let (package_dir_relative, file_name) = relative_package_path
-            .rsplit_once('/')
-            .ok_or_else(|| Error::ParseError(format!("Invalid package path: {}", relative_package_path)))?;
-
-        // Construct the full base URL for the packages_parser
-        // e.g., "http://example.com/dists/suite/main/binary-amd64"
-        let full_package_base_url = format!("{}/{}", base_url_for_packages, package_dir_relative);
-        
-        let parsed_entries = packages_parser::parse_packages_file(&full_package_base_url, file_name).await?;
-        all_parsed_package_entries.extend(parsed_entries);
-    }
-    // Now you have all_parsed_package_entries, you can process them further, e.g., save them to disk.
-    // For now, returning an empty Vec<PathBuf> as the function signature requires.
-    // The actual saving to disk logic would go here.
-    Ok(Vec::new())
+                let full_package_base_url =
+                    format!("{}/{}", base_url_for_packages, package_dir_relative);
+                Ok::<String, Error>(full_package_base_url)
+            }
+        })
+        .filter_map(|result| async { result.ok() })
+        // 4. 最終的に Vec<String> などに集める場合
+        .collect::<Vec<String>>()
+        .await;
+    Ok(all_parsed_package_entries)
 }
 
 async fn _update_internal(
     entries: Vec<AptRepositoryEntry>,
     in_release_cache_dir: PathBuf,
-    packages_cache_dir: PathBuf,
-    package_list_dir: PathBuf,
+    packages_dir: PathBuf,
 ) -> Result<(), Error> {
-    let mut error_stack: Vec<Error> = Vec::new();
+    // 1. ディレクトリ作成の並列実行
     let prepare_dir = [
         tokio::fs::create_dir_all(&in_release_cache_dir),
-        tokio::fs::create_dir_all(&packages_cache_dir),
-        tokio::fs::create_dir_all(&package_list_dir),
+        tokio::fs::create_dir_all(&packages_dir),
     ];
     futures::future::try_join_all(prepare_dir).await?;
+
     let in_release_targets = entries.in_release_targets();
+    let mut error_stack: Vec<Error> = Vec::new();
+
+    // 2. InRelease プロセスの生成
     let update_process = in_release_targets.into_iter().map(|in_release_target| {
-        tokio::task::spawn(async move { in_release_process(in_release_target).await }) // in_release_processもasyncだと仮定してawaitを追加
-    });
-    let update_result = futures::future::join_all(update_process).await;
-    for task_result in update_result {
-        match task_result {
-            Ok(process_result) => {
-                if let Err(e) = process_result {
-                    error_stack.push(e);
+        let packages_dir = packages_dir.clone();
+        tokio::task::spawn(async move {
+            let mut local_errors = Vec::new(); // タスク内でのエラー集約用
+
+            // target_urls の取得に失敗した場合は、その時点でこのタスクを抜ける
+            let target_urls = match in_release_process(in_release_target).await {
+                Ok(urls) => urls,
+                Err(e) => return Err(e),
+            };
+
+            let packages_targets = target_urls
+                .into_iter()
+                .map(|url| PackagesTarget::new(url, packages_dir.clone()));
+
+            // Packages プロセスの生成
+            let packages_process_futures = packages_targets
+                .map(|t| tokio::task::spawn(async move { packages_process(t).await }));
+
+            let packages_process_results =
+                futures::future::join_all(packages_process_futures).await;
+
+            // 内部タスクのエラーを local_errors に集約
+            for task_result in packages_process_results {
+                match task_result {
+                    Ok(Ok(_)) => {}
+                    Ok(Err(e)) => local_errors.push(e),
+                    Err(join_err) => local_errors.push(join_err.into()),
                 }
             }
-            Err(join_error) => {
-                error_stack.push(join_error.into());
+
+            Ok(local_errors) // 正常終了時、発生したエラーリストを返り値として渡す
+        })
+    });
+
+    // 3. すべての結果を待ち受け、親の error_stack にマージ
+    let update_results = futures::future::join_all(update_process).await;
+    for task_result in update_results {
+        match task_result {
+            // タスクが正常に完了し、内部でエラーリストが返ってきた場合
+            Ok(Ok(inner_errors)) => {
+                error_stack.extend(inner_errors);
+            }
+            // in_release_process 自体が失敗した場合
+            Ok(Err(e)) => {
+                error_stack.push(e);
+            }
+            // タスクの spawn 自体が失敗（パニック等）した場合
+            Err(join_err) => {
+                error_stack.push(join_err.into());
             }
         }
     }
@@ -460,15 +523,8 @@ async fn _update_internal(
 pub async fn update() -> Result<(), Error> {
     let entries = AptRepositoryEntry::load_all().await?;
     let in_release_cache_dir = PathBuf::from("/var/lib/upm/caches/lists/releases");
-    let packages_cache_dir = PathBuf::from("/var/lib/upm/caches/lists/packages");
     let package_list_dir = PathBuf::from("/var/lib/upm/repo/packages");
-    _update_internal(
-        entries,
-        in_release_cache_dir,
-        packages_cache_dir,
-        package_list_dir,
-    )
-    .await
+    _update_internal(entries, in_release_cache_dir, package_list_dir).await
 }
 
 #[cfg(test)]
@@ -491,7 +547,6 @@ mod tests {
             let temp_keyring_dir = temp_test_dir.join("keyrings");
             let temp_keyring_file = temp_keyring_dir.join("ubuntu-archive-keyring.gpg");
             let in_release_cache_dir_test = temp_test_dir.join("caches/lists/releases");
-            let packages_cache_dir_test = temp_test_dir.join("caches/lists/packages");
             let package_list_dir_test = temp_test_dir.join("repo/packages");
 
             // Ensure keyring directory exists
@@ -522,7 +577,6 @@ mod tests {
             _update_internal(
                 entries,
                 in_release_cache_dir_test.clone(),
-                packages_cache_dir_test.clone(),
                 package_list_dir_test.clone(),
             )
             .await?;
