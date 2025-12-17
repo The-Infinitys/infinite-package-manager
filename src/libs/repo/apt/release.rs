@@ -7,7 +7,7 @@ use crate::{
     modules::error::Error,
 };
 fn hex_string_to_vec_u8(hex: &str) -> Result<Vec<u8>, Error> {
-    if hex.len() % 2 != 0 {
+    if !hex.len().is_multiple_of(2) {
         return Err(Error::ParseError(
             "Hex string must have an even number of digits.".to_string(),
         ));
