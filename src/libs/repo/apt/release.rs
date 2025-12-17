@@ -77,6 +77,7 @@ pub struct AptReleaseInfo {
     pub md5sum: Vec<FileHashMetaData>,
     pub sha1: Vec<FileHashMetaData>,
     pub sha256: Vec<FileHashMetaData>,
+    pub packages_urls: Vec<String>,
     pub fields: HashMap<String, String>,
 }
 
@@ -146,12 +147,21 @@ impl AptReleaseInfo {
                     }
                     "MD5Sum" => {
                         release_info.md5sum = parse_hash_meta(value)?;
+                        release_info
+                            .packages_urls
+                            .extend(release_info.md5sum.iter().map(|f| f.path.to_string_lossy().to_string()));
                     }
                     "SHA1" => {
                         release_info.sha1 = parse_hash_meta(value)?;
+                        release_info
+                            .packages_urls
+                            .extend(release_info.sha1.iter().map(|f| f.path.to_string_lossy().to_string()));
                     }
                     "SHA256" => {
                         release_info.sha256 = parse_hash_meta(value)?;
+                        release_info
+                            .packages_urls
+                            .extend(release_info.sha256.iter().map(|f| f.path.to_string_lossy().to_string()));
                     }
                     _ => {
                         release_info.fields.insert(key, value.to_string());

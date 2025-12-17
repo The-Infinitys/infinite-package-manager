@@ -7,7 +7,7 @@ use reqwest;
 use std::path::Path;
 use std::{collections::HashMap, path::PathBuf, process::Command};
 
-use crate::libs::repo::apt::release::{AptReleaseInfo, Hash};
+use crate::libs::repo::apt::release::AptReleaseInfo;
 use crate::{libs::repo::apt::vec_traits::AptRepositoryEntryVec, modules::error::Error};
 use base64::Engine;
 use parser::list;
@@ -27,11 +27,7 @@ pub struct InReleaseTarget {
     pub url: String,
     pub local_path: PathBuf,
     pub signed_by_key: AptRepositoryKeyInfo,
-}
-
-pub struct PackagesTarget {
-    pub url: String,
-    pub expected_hash: Hash,
+    pub packages_urls: Vec<String>,
 }
 
 // AptRepositoryTypeにDisplayを実装（coloredを使用しない部分）
@@ -382,12 +378,39 @@ async fn in_release_process(in_release_target: InReleaseTarget) -> Result<Vec<Pa
     let content = response.bytes().await?.to_vec();
     let content = String::from_utf8(content)?;
     let in_release = AptReleaseInfo::parse_signed(&content, &in_release_target.signed_by_key)?;
-    let before_content = std::fs::File::open(path)?;
-    let before_content = std::io::BufReader::new(before_content);
-    let before_in_release: AptReleaseInfo = serde_yaml::from_reader(before_content)?;
-    todo!()
-}
+    let _before_content = std::fs::File::open(path)?; // Mark as unused
+    let _before_content = std::io::BufReader::new(_before_content);
+    let _before_in_release: AptReleaseInfo = serde_yaml::from_reader(_before_content)?; // Mark as unused
 
+    let mut all_parsed_package_entries = Vec::new();
+
+    // in_release_target.url: e.g., "http://example.com/dists/suite/InRelease"
+    // We need "http://example.com/dists/suite/" as the base for packages
+    let base_url_for_packages = url
+        .rsplit_once('/')
+        .map(|(prefix, _)| prefix)
+        .unwrap_or(url)
+        .to_string();
+
+    for relative_package_path in in_release.packages_urls {
+        // relative_package_path: e.g., "main/binary-amd64/Packages.xz"
+        // We need to split this into the base_url for the parser and the file_name
+        let (package_dir_relative, file_name) = relative_package_path
+            .rsplit_once('/')
+            .ok_or_else(|| Error::ParseError(format!("Invalid package path: {}", relative_package_path)))?;
+
+        // Construct the full base URL for the packages_parser
+        // e.g., "http://example.com/dists/suite/main/binary-amd64"
+        let full_package_base_url = format!("{}/{}", base_url_for_packages, package_dir_relative);
+        
+        let parsed_entries = packages_parser::parse_packages_file(&full_package_base_url, file_name).await?;
+        all_parsed_package_entries.extend(parsed_entries);
+    }
+    // Now you have all_parsed_package_entries, you can process them further, e.g., save them to disk.
+    // For now, returning an empty Vec<PathBuf> as the function signature requires.
+    // The actual saving to disk logic would go here.
+    Ok(Vec::new())
+}
 
 async fn _update_internal(
     entries: Vec<AptRepositoryEntry>,

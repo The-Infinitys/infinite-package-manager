@@ -44,6 +44,8 @@ pub enum Error {
     FromUtf8Error(#[from] std::string::FromUtf8Error),
     #[error("No Result (error already reported)")]
     NoResult, // 新しく追加
+    #[error("Lzma Error: {0}")]
+    LzmaError(#[from] lzma_rs::error::Error),
 }
 
 impl Error {
@@ -71,6 +73,7 @@ impl Error {
             Self::SignatureVerificationAnyHowError(_) => "SignatureVerificationError",
             Self::FromUtf8Error(_) => "FromUtf8Error",
             Self::NoResult => "NoResult",
+            Self::LzmaError(_) => "LzmaError",
         };
         // Kindは必ず改行付きで出力します
         writeln!(f, "  {}: {}", kind_label, kind_value.yellow())
@@ -108,6 +111,7 @@ impl Error {
             Self::SignatureVerificationAnyHowError(msg) => msg.to_string(),
             Self::FromUtf8Error(e) => e.to_string(),
             Self::NoResult => "No further result available; error handled elsewhere.".to_string(),
+            Self::LzmaError(e) => e.to_string(),
         };
         // 最後に、組み立てたメッセージとラベルをFormatterに出力
         // メッセージは赤で強調

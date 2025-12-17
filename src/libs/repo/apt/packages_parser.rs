@@ -1,18 +1,28 @@
-use std::{io::Read, path::Path};
-
 use deb822_lossless::Deb822;
 use flate2::read::GzDecoder;
+use lzma_rs::lzma_decompress;
+use reqwest;
+use std::io::Read;
+use xz2::read::XzDecoder;
 
 use crate::{libs::pkg::deb::DebPackageEntry, modules::error::Error};
 
-pub fn parse_packages_file(path: impl AsRef<Path>) -> Result<Vec<DebPackageEntry>, Error> {
-    let path = path.as_ref();
-    let file = std::fs::File::open(path)?;
-
-    let reader: Box<dyn Read> = if path.extension().is_some_and(|ext| ext == "gz") {
-        Box::new(GzDecoder::new(file))
+pub async fn parse_packages_file(
+    url: &str,
+    file_name: &str,
+) -> Result<Vec<DebPackageEntry>, Error> {
+    let full_url = format!("{}/{}", url, file_name);
+    let response = reqwest::get(&full_url).await?.bytes().await?.to_vec();
+    let mut decompressed_data = Vec::new();
+    let reader: Box<dyn Read> = if file_name.ends_with(".gz") {
+        Box::new(GzDecoder::new(response.as_slice()))
+    } else if file_name.ends_with(".xz") {
+        Box::new(XzDecoder::new(response.as_slice()))
+    } else if file_name.ends_with(".lzma") {
+        lzma_decompress(&mut response.as_slice(), &mut decompressed_data)?;
+        Box::new(decompressed_data.as_slice())
     } else {
-        Box::new(file)
+        Box::new(response.as_slice())
     };
 
     let deb_info = Deb822::read(reader)?.paragraphs();

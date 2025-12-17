@@ -23,14 +23,22 @@ impl AptRepositoryEntryVec for Vec<AptRepositoryEntry> {
                 entry.suites.iter().for_each(|suite| {
                     // InReleaseファイルの標準的なパス形式: URI/dists/SUITE/InRelease
                     let url = format!("{}/dists/{}/InRelease", entry.uris, suite);
-                    unique_targets.insert((url, signed_by_key.clone())); // Store URL and key info
+
+                    let mut packages_urls: Vec<String> = Vec::new();
+                    // Packages.xz, Packages.gz, Packages.bz2, Packages.lzma のURLを生成
+                    packages_urls.extend(entry.target_urls(".xz"));
+                    packages_urls.extend(entry.target_urls(".gz"));
+                    packages_urls.extend(entry.target_urls(".bz2"));
+                    packages_urls.extend(entry.target_urls(".lzma"));
+
+                    unique_targets.insert((url, signed_by_key.clone(), packages_urls)); // Store URL, key info and packages URLs
                 });
             });
 
         // 3. 一意のURLに対して、ローカル保存ファイル名を生成する
         unique_targets
             .into_iter()
-            .map(|(url, signed_by_key)| {
+            .map(|(url, signed_by_key, packages_urls)| {
                 // ローカルファイル名を作成 (ユーザー要望の形式: archive.ubuntu.com_ubuntu_dists_suite_InRelease)
                 let mut local_name = url.clone();
 
@@ -57,6 +65,7 @@ impl AptRepositoryEntryVec for Vec<AptRepositoryEntry> {
                     url,
                     local_path: PathBuf::from(local_filename),
                     signed_by_key,
+                    packages_urls,
                 }
             })
             .collect()
