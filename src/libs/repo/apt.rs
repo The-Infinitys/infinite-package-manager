@@ -19,6 +19,7 @@ pub enum AptRepositoryType {
     DebSrc,
 }
 use colored::*;
+use indicatif::{ProgressBar, ProgressStyle};
 use std::fmt;
 use tokio::task;
 
@@ -32,11 +33,16 @@ pub struct InReleaseTarget {
 #[derive(Debug, Clone)]
 pub struct PackagesTarget {
     pub url: String,
+    pub cache_dir: PathBuf,
     pub packages_dir: PathBuf,
 }
 impl PackagesTarget {
-    pub fn new(url: String, packages_dir: PathBuf) -> Self {
-        Self { url, packages_dir }
+    pub fn new(url: String, cache_dir: PathBuf, packages_dir: PathBuf) -> Self {
+        Self {
+            url,
+            cache_dir,
+            packages_dir,
+        }
     }
 }
 // AptRepositoryTypeにDisplayを実装（coloredを使用しない部分）
@@ -381,10 +387,14 @@ impl AptRepositoryEntry {
 }
 async fn packages_process(packages_target: PackagesTarget) -> Result<(), Error> {
     let url = &packages_target.url;
-    let _packages = packages_parser::parse_packages_file(url).await;
+    let _cache_dir = &packages_target.cache_dir;
+    let packages = packages_parser::parse_packages_file(url).await?;
+    for package in packages {
+        println!("{}", package);
+    }
     Ok(())
 }
-async fn in_release_process(in_release_target: InReleaseTarget) -> Result<Vec<String>, Error> {
+async fn in_release_process(in_release_target: &InReleaseTarget) -> Result<Vec<String>, Error> {
     let url = &in_release_target.url;
     let path = &in_release_target.local_path;
     let packages_urls = &in_release_target.packages_urls;
@@ -392,26 +402,64 @@ async fn in_release_process(in_release_target: InReleaseTarget) -> Result<Vec<St
     let content = response.bytes().await?.to_vec();
     let content = String::from_utf8(content)?;
     let in_release = AptReleaseInfo::parse_signed(&content, &in_release_target.signed_by_key)?;
-    let before_content = std::fs::File::open(path)?;
-    let before_content = std::io::BufReader::new(before_content);
-    let before_in_release: AptReleaseInfo = serde_yaml::from_reader(before_content)?;
+    let before_in_release: Result<AptReleaseInfo, Error> = {
+        match std::fs::File::open(path) {
+            Ok(before_content_file) => {
+                let before_content = std::io::BufReader::new(before_content_file);
+                let before_in_release: AptReleaseInfo = serde_yaml::from_reader(before_content)?;
+                Ok(before_in_release)
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                eprintln!(
+                    "Warning: Previous InRelease file not found at {}. Proceeding as new file. Error: {}",
+                    path.display(),
+                    e
+                );
+                Err(Error::Io(e)) // Errorを返すことで、`changed_pathes`がすべてtrueになる
+            }
+            Err(e) => {
+                eprintln!(
+                    "Error opening previous InRelease file at {}: {}",
+                    path.display(),
+                    e
+                );
+                Err(e.into())
+            }
+        }
+    };
     let base_url_for_packages = url
         .rsplit_once('/')
         .map(|(prefix, _)| prefix)
         .unwrap_or(url)
         .to_string();
     use futures::stream::{self, StreamExt};
-    let changed_pathes = packages_urls.iter().filter(|path| {
-        if let Some(current_hash) = in_release.sha1.iter().find(|d| d.path == **path) {
-            if let Some(before_hash) = before_in_release.sha1.iter().find(|d| d.path == **path) {
-                current_hash.hash != before_hash.hash
-            } else {
-                false
-            }
-        } else {
-            false
-        }
-    });
+    let changed_pathes = {
+        in_release
+            .packages_urls // AptReleaseInfoから解析された相対パスのリストを使用
+            .iter()
+            .filter(|path| match &before_in_release {
+                Ok(before_in_release) => {
+                    if let Some(current_hash) = in_release
+                        .sha1
+                        .iter()
+                        .find(|d| d.path.to_str().unwrap() == path.as_str())
+                    {
+                        if let Some(before_hash) = before_in_release
+                            .sha1
+                            .iter()
+                            .find(|d| d.path.to_str().unwrap() == path.as_str())
+                        {
+                            current_hash.hash != before_hash.hash
+                        } else {
+                            true // 以前のInReleaseになければ変更とみなす
+                        }
+                    } else {
+                        false // 現在のInReleaseにもなければスキップ (本来はありえない)
+                    }
+                }
+                Err(_) => true, // 以前のInReleaseファイルがなければ全て変更とみなす
+            })
+    };
     let all_parsed_package_entries = stream::iter(changed_pathes)
         .then(|relative_package_path| {
             let base_url_for_packages = base_url_for_packages.clone();
@@ -424,13 +472,12 @@ async fn in_release_process(in_release_target: InReleaseTarget) -> Result<Vec<St
                         ))
                     })?;
 
-                let full_package_base_url =
-                    format!("{}/{}", base_url_for_packages, package_dir_relative);
-                Ok::<String, Error>(full_package_base_url)
+                let full_packages_file_url =
+                    format!("{}/{}", base_url_for_packages, relative_package_path);
+                Ok::<String, Error>(full_packages_file_url)
             }
         })
         .filter_map(|result| async { result.ok() })
-        // 4. 最終的に Vec<String> などに集める場合
         .collect::<Vec<String>>()
         .await;
     Ok(all_parsed_package_entries)
@@ -439,37 +486,80 @@ async fn in_release_process(in_release_target: InReleaseTarget) -> Result<Vec<St
 async fn _update_internal(
     entries: Vec<AptRepositoryEntry>,
     in_release_cache_dir: PathBuf,
+    packages_cache_dir: PathBuf,
     packages_dir: PathBuf,
 ) -> Result<(), Error> {
     // 1. ディレクトリ作成の並列実行
     let prepare_dir = [
         tokio::fs::create_dir_all(&in_release_cache_dir),
+        tokio::fs::create_dir_all(&packages_cache_dir),
         tokio::fs::create_dir_all(&packages_dir),
     ];
     futures::future::try_join_all(prepare_dir).await?;
 
     let in_release_targets = entries.in_release_targets();
+    let num_in_release_targets = in_release_targets.len();
+
+    let mp = indicatif::MultiProgress::new();
+    let main_pb = mp.add(ProgressBar::new(num_in_release_targets as u64));
+    main_pb.set_style(
+        ProgressStyle::with_template("[{elapsed_precise}] {bar:40.cyan/blue} {pos}/{len} {msg}")
+            .unwrap()
+            .progress_chars("##-"),
+    );
+    main_pb.set_message("Fetching InRelease files...");
+
     let mut error_stack: Vec<Error> = Vec::new();
 
     // 2. InRelease プロセスの生成
     let update_process = in_release_targets.into_iter().map(|in_release_target| {
+        let cache_dir = packages_cache_dir.clone();
         let packages_dir = packages_dir.clone();
+        let main_pb_clone = main_pb.clone();
+        let mp_clone = mp.clone();
         tokio::task::spawn(async move {
-            let mut local_errors = Vec::new(); // タスク内でのエラー集約用
+            let mut local_errors = Vec::new();
 
-            // target_urls の取得に失敗した場合は、その時点でこのタスクを抜ける
-            let target_urls = match in_release_process(in_release_target).await {
-                Ok(urls) => urls,
-                Err(e) => return Err(e),
+            // 各in_release_targetに対するサブプログレスバーを作成
+            let sub_pb = mp_clone.add(ProgressBar::new(0)); // 後で総数を設定
+            sub_pb.set_style(
+                ProgressStyle::with_template(
+                    " {spinner:.green} [{elapsed_precise}] {bar:40.green/yellow} {pos}/{len} {msg}",
+                )
+                .unwrap()
+                .progress_chars("##-"),
+            );
+            sub_pb.set_message(format!("InRelease: {}", in_release_target.url));
+
+            let target_urls = match in_release_process(&in_release_target).await {
+                Ok(urls) => {
+                    sub_pb.set_length(urls.len() as u64); // packages_processの総数を設定
+                    urls
+                }
+                Err(e) => {
+                    sub_pb.finish_with_message(format!(
+                        "InRelease: {} - FAILED",
+                        in_release_target.url
+                    ));
+                    main_pb_clone.inc(1); // メインの進捗も進める
+                    return Err(e);
+                }
             };
 
-            let packages_targets = target_urls
+            let packages_targets: Vec<PackagesTarget> = target_urls
                 .into_iter()
-                .map(|url| PackagesTarget::new(url, packages_dir.clone()));
+                .map(|url| PackagesTarget::new(url, cache_dir.clone(), packages_dir.clone()))
+                .collect();
 
             // Packages プロセスの生成
-            let packages_process_futures = packages_targets
-                .map(|t| tokio::task::spawn(async move { packages_process(t).await }));
+            let packages_process_futures = packages_targets.into_iter().map(|t| {
+                let sub_pb_clone = sub_pb.clone();
+                tokio::task::spawn(async move {
+                    let result = packages_process(t).await;
+                    sub_pb_clone.inc(1); // 各パッケージの処理完了時に進捗を更新
+                    result
+                })
+            });
 
             let packages_process_results =
                 futures::future::join_all(packages_process_futures).await;
@@ -482,13 +572,16 @@ async fn _update_internal(
                     Err(join_err) => local_errors.push(join_err.into()),
                 }
             }
-
+            sub_pb.finish_with_message(format!("InRelease: {} - DONE", &in_release_target.url));
+            main_pb_clone.inc(1); // メインの進捗を進める
             Ok(local_errors) // 正常終了時、発生したエラーリストを返り値として渡す
         })
     });
 
     // 3. すべての結果を待ち受け、親の error_stack にマージ
     let update_results = futures::future::join_all(update_process).await;
+    main_pb.finish_with_message("All InRelease files processed."); // メインのプログレスバーを完了
+    mp.clear().unwrap(); // すべてのプログレスバーを終了し、クリアする
     for task_result in update_results {
         match task_result {
             // タスクが正常に完了し、内部でエラーリストが返ってきた場合
@@ -523,8 +616,15 @@ async fn _update_internal(
 pub async fn update() -> Result<(), Error> {
     let entries = AptRepositoryEntry::load_all().await?;
     let in_release_cache_dir = PathBuf::from("/var/lib/upm/caches/lists/releases");
+    let packages_cache_dir = PathBuf::from("/var/lib/upm/caches/lists/packages");
     let package_list_dir = PathBuf::from("/var/lib/upm/repo/packages");
-    _update_internal(entries, in_release_cache_dir, package_list_dir).await
+    _update_internal(
+        entries,
+        in_release_cache_dir,
+        packages_cache_dir,
+        package_list_dir,
+    )
+    .await
 }
 
 #[cfg(test)]
@@ -547,6 +647,7 @@ mod tests {
             let temp_keyring_dir = temp_test_dir.join("keyrings");
             let temp_keyring_file = temp_keyring_dir.join("ubuntu-archive-keyring.gpg");
             let in_release_cache_dir_test = temp_test_dir.join("caches/lists/releases");
+            let packages_cache_dir_test = temp_test_dir.join("caches/lists/packages");
             let package_list_dir_test = temp_test_dir.join("repo/packages");
 
             // Ensure keyring directory exists
@@ -577,6 +678,7 @@ mod tests {
             _update_internal(
                 entries,
                 in_release_cache_dir_test.clone(),
+                packages_cache_dir_test.clone(),
                 package_list_dir_test.clone(),
             )
             .await?;
