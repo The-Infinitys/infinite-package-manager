@@ -1,18 +1,18 @@
 use super::AptRepositoryEntry;
 use std::collections::HashSet;
-use std::path::PathBuf;
+use std::path::Path;
 
 /// AptRepositoryEntryのベクタに対する拡張トレイト
 pub trait AptRepositoryEntryVec {
     /// 各リポジトリエントリから、InReleaseファイルをダウンロードするためのターゲット情報リストを生成する
     ///
     /// 戻り値: Vec<InReleaseTarget>
-    fn in_release_targets(&self) -> Vec<super::InReleaseTarget>;
+    fn in_release_targets(&self, cache_dir: impl AsRef<Path>) -> Vec<super::InReleaseTarget>;
 }
 
 // AptRepositoryEntryのベクタ（Vec<AptRepositoryEntry>）にトレイトを実装
 impl AptRepositoryEntryVec for Vec<AptRepositoryEntry> {
-    fn in_release_targets(&self) -> Vec<super::InReleaseTarget> {
+    fn in_release_targets(&self, cache_dir: impl AsRef<Path>) -> Vec<super::InReleaseTarget> {
         let mut unique_targets = HashSet::new();
         self.iter()
             // 1. 有効なエントリのみを対象とする
@@ -55,11 +55,12 @@ impl AptRepositoryEntryVec for Vec<AptRepositoryEntry> {
                 let filename_body = local_name.replace('/', "_");
 
                 // 4. 拡張子 "_InRelease" を再付加
-                let local_filename = format!("{}_InRelease", filename_body);
-
+                let local_filename = format!("{}_InRelease.yaml", filename_body);
+                let cache_dir = cache_dir.as_ref().to_path_buf();
+                let path = cache_dir.join(local_filename);
                 super::InReleaseTarget {
                     url,
-                    local_path: PathBuf::from(local_filename),
+                    path,
                     signed_by_key,
                     packages_urls,
                 }

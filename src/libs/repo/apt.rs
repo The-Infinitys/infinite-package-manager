@@ -28,7 +28,7 @@ use tokio::task;
 #[derive(Debug, Clone)]
 pub struct InReleaseTarget {
     pub url: String,
-    pub local_path: PathBuf,
+    pub path: PathBuf,
     pub signed_by_key: AptRepositoryKeyInfo,
     pub packages_urls: Vec<String>,
 }
@@ -407,7 +407,7 @@ async fn packages_process(packages_target: PackagesTarget) -> Result<PathBuf, Er
 }
 async fn in_release_process(in_release_target: &InReleaseTarget) -> Result<Vec<String>, Error> {
     let url = &in_release_target.url;
-    let path = &in_release_target.local_path;
+    let path = &in_release_target.path;
     let packages_urls = &in_release_target.packages_urls;
     let response = reqwest::get(url).await?;
     let content = response.bytes().await?.to_vec();
@@ -482,6 +482,8 @@ async fn in_release_process(in_release_target: &InReleaseTarget) -> Result<Vec<S
         .filter_map(|result| async { result.ok() })
         .collect::<Vec<String>>()
         .await;
+    let contents = serde_yaml::to_string(&in_release)?;
+    tokio::fs::write(path, contents).await?;
     Ok(all_parsed_package_entries)
 }
 
@@ -499,7 +501,7 @@ async fn _update_internal(
     ];
     futures::future::try_join_all(prepare_dir).await?;
 
-    let in_release_targets = entries.in_release_targets();
+    let in_release_targets = entries.in_release_targets(in_release_cache_dir);
     let num_in_release_targets = in_release_targets.len();
 
     let mp = indicatif::MultiProgress::new();

@@ -50,6 +50,7 @@ impl TryFrom<&str> for FileHashMetaData {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct FileHashMetaData {
+    #[serde(with = "crate::libs::serde_base64::serde_base64")]
     pub hash: Vec<u8>,
     pub size: u64,
     pub path: PathBuf,
