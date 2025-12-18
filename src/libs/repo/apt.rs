@@ -434,8 +434,7 @@ async fn in_release_process(in_release_target: &InReleaseTarget) -> Result<Vec<S
         .to_string();
     use futures::stream::{self, StreamExt};
     let changed_pathes = {
-        in_release
-            .packages_urls // AptReleaseInfoから解析された相対パスのリストを使用
+        packages_urls // AptReleaseInfoから解析された相対パスのリストを使用
             .iter()
             .filter(|path| match &before_in_release {
                 Ok(before_in_release) => {
@@ -464,14 +463,6 @@ async fn in_release_process(in_release_target: &InReleaseTarget) -> Result<Vec<S
         .then(|relative_package_path| {
             let base_url_for_packages = base_url_for_packages.clone();
             async move {
-                let (package_dir_relative, _) =
-                    relative_package_path.rsplit_once('/').ok_or_else(|| {
-                        Error::ParseError(format!(
-                            "Invalid package path: {}",
-                            &relative_package_path
-                        ))
-                    })?;
-
                 let full_packages_file_url =
                     format!("{}/{}", base_url_for_packages, relative_package_path);
                 Ok::<String, Error>(full_packages_file_url)
