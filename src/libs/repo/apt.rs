@@ -7,7 +7,6 @@ use reqwest;
 use std::path::Path;
 use std::{collections::HashMap, path::PathBuf, process::Command};
 
-use crate::libs::pkg::deb::DebPackageEntry;
 use crate::libs::repo::apt::release::AptReleaseInfo;
 use crate::{libs::repo::apt::vec_traits::AptRepositoryEntryVec, modules::error::Error};
 use base64::Engine;

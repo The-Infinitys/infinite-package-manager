@@ -1,21 +1,10 @@
 use deb822_lossless::Deb822;
 use flate2::read::GzDecoder;
 use lzma_rs::lzma_decompress;
-use reqwest;
 use std::io::Read;
 use xz2::read::XzDecoder;
 
 use crate::{libs::pkg::deb::DebPackageEntry, modules::error::Error};
-
-pub async fn parse_packages_file(url: &str) -> Result<Vec<DebPackageEntry>, Error> {
-    let file_name = url
-        .rsplit_once('/')
-        .map(|(_, suffix)| suffix)
-        .unwrap_or(url)
-        .to_string();
-    let response = reqwest::get(url).await?.bytes().await?.to_vec();
-    parse_packages_file_from_bytes(&file_name, &response)
-}
 
 /// バイト列からパッケージファイルを解凍し、DebPackageEntryのリストをパースする
 pub fn parse_packages_file_from_bytes(
