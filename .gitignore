@@ -21,7 +21,6 @@ target
 #.idea/
 
 
-# Added by cargo
-
-/target
 .gemini/
+
+/run/

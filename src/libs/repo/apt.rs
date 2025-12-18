@@ -7,11 +7,14 @@ use reqwest;
 use std::path::Path;
 use std::{collections::HashMap, path::PathBuf, process::Command};
 
+use crate::libs::pkg::deb::DebPackageEntry;
 use crate::libs::repo::apt::release::AptReleaseInfo;
 use crate::{libs::repo::apt::vec_traits::AptRepositoryEntryVec, modules::error::Error};
 use base64::Engine;
+use packages_parser::parse_packages_file_from_bytes;
 use parser::list;
 use parser::sources;
+use serde_yaml;
 #[derive(Debug, PartialEq, Eq, Clone, Default)]
 pub enum AptRepositoryType {
     #[default]
@@ -385,14 +388,23 @@ impl AptRepositoryEntry {
             .collect()
     }
 }
-async fn packages_process(packages_target: PackagesTarget) -> Result<(), Error> {
+async fn packages_process(packages_target: PackagesTarget) -> Result<PathBuf, Error> {
     let url = &packages_target.url;
-    let _cache_dir = &packages_target.cache_dir;
-    let packages = packages_parser::parse_packages_file(url).await?;
-    for package in packages {
-        println!("{}", package);
-    }
-    Ok(())
+    let cache_dir = &packages_target.cache_dir;
+
+    let file_name = url
+        .rsplit_once('/')
+        .map(|(_, suffix)| suffix)
+        .unwrap_or(url);
+    let cached_file_path = cache_dir.join(file_name);
+
+    // ディレクトリがなければ作成
+    tokio::fs::create_dir_all(cache_dir).await?;
+
+    let response = reqwest::get(url).await?.bytes().await?.to_vec();
+    tokio::fs::write(&cached_file_path, response).await?;
+
+    Ok(cached_file_path)
 }
 async fn in_release_process(in_release_target: &InReleaseTarget) -> Result<Vec<String>, Error> {
     let url = &in_release_target.url;
@@ -478,7 +490,7 @@ async fn _update_internal(
     entries: Vec<AptRepositoryEntry>,
     in_release_cache_dir: PathBuf,
     packages_cache_dir: PathBuf,
-    packages_dir: PathBuf,
+    packages_dir: PathBuf, // この引数はパッケージ情報を保存するための最終的なディレクトリを示す
 ) -> Result<(), Error> {
     // 1. ディレクトリ作成の並列実行
     let prepare_dir = [
@@ -505,7 +517,7 @@ async fn _update_internal(
     // 2. InRelease プロセスの生成
     let update_process = in_release_targets.into_iter().map(|in_release_target| {
         let cache_dir = packages_cache_dir.clone();
-        let packages_dir = packages_dir.clone();
+        let package_list_output_dir = packages_dir.clone(); // パッケージリスト保存用ディレクトリ
         let main_pb_clone = main_pb.clone();
         let mp_clone = mp.clone();
         tokio::task::spawn(async move {
@@ -539,31 +551,86 @@ async fn _update_internal(
 
             let packages_targets: Vec<PackagesTarget> = target_urls
                 .into_iter()
-                .map(|url| PackagesTarget::new(url, cache_dir.clone(), packages_dir.clone()))
+                .map(|url| {
+                    PackagesTarget::new(url, cache_dir.clone(), package_list_output_dir.clone())
+                })
                 .collect();
 
-            // Packages プロセスの生成
+            // Packages プロセスの生成 (ファイルのダウンロード)
             let packages_process_futures = packages_targets.into_iter().map(|t| {
                 let sub_pb_clone = sub_pb.clone();
                 tokio::task::spawn(async move {
-                    let result = packages_process(t).await;
+                    let result = packages_process(t).await; // PathBufを返す
                     sub_pb_clone.inc(1); // 各パッケージの処理完了時に進捗を更新
                     result
                 })
             });
 
-            let packages_process_results =
+            let packages_download_results =
                 futures::future::join_all(packages_process_futures).await;
 
-            // 内部タスクのエラーを local_errors に集約
-            for task_result in packages_process_results {
+            let mut downloaded_package_files: Vec<PathBuf> = Vec::new();
+
+            for task_result in packages_download_results {
                 match task_result {
-                    Ok(Ok(_)) => {}
+                    Ok(Ok(path)) => {
+                        downloaded_package_files.push(path);
+                    }
                     Ok(Err(e)) => local_errors.push(e),
                     Err(join_err) => local_errors.push(join_err.into()),
                 }
             }
-            sub_pb.finish_with_message(format!("InRelease: {} - DONE", &in_release_target.url));
+
+            sub_pb.finish_with_message(format!(
+                "InRelease: {} - DONE ({} files downloaded)",
+                &in_release_target.url,
+                downloaded_package_files.len()
+            ));
+
+            // ダウンロードされたファイルをパースしてYAMLとして保存
+            let parse_pb = mp_clone.add(ProgressBar::new(downloaded_package_files.len() as u64));
+            parse_pb.set_style(
+                ProgressStyle::with_template(
+                    " {spinner:.yellow} [{elapsed_precise}] {bar:40.yellow/cyan} {pos}/{len} {msg}",
+                )
+                .unwrap()
+                .progress_chars("##-"),
+            );
+            parse_pb.set_message(format!("Parsing & Saving: {}", in_release_target.url));
+
+            for file_path in downloaded_package_files {
+                let file_name = file_path
+                    .file_name()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("unknown_file");
+                match tokio::fs::read(&file_path).await {
+                    Ok(data) => match parse_packages_file_from_bytes(file_name, &data) {
+                        Ok(deb_entries) => {
+                            for entry in deb_entries {
+                                let package_name = &entry.package;
+                                let package_version = &entry.version;
+                                let output_dir = package_list_output_dir.join(package_name);
+                                tokio::fs::create_dir_all(&output_dir).await?;
+                                let output_file_path = output_dir
+                                    .join(format!("{}-{}.yaml", package_name, package_version));
+                                match serde_yaml::to_string(&entry) {
+                                    Ok(yaml_content) => {
+                                        tokio::fs::write(output_file_path, yaml_content).await?;
+                                    }
+                                    Err(e) => local_errors.push(Error::SerdeYaml(e)),
+                                }
+                            }
+                        }
+                        Err(e) => local_errors.push(e),
+                    },
+                    Err(e) => local_errors.push(e.into()),
+                }
+                parse_pb.inc(1);
+            }
+            parse_pb.finish_with_message(format!(
+                "Parsing & Saving: {} - DONE",
+                &in_release_target.url
+            ));
             main_pb_clone.inc(1); // メインの進捗を進める
             Ok(local_errors) // 正常終了時、発生したエラーリストを返り値として渡す
         })
@@ -588,6 +655,7 @@ async fn _update_internal(
                 error_stack.push(join_err.into());
             }
         }
+        main_pb.inc(1); // メインの進捗を進める
     }
     if !error_stack.is_empty() {
         eprintln!(
@@ -621,45 +689,48 @@ pub async fn update() -> Result<(), Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    // uuid クレートを使用するために、Cargo.toml に追加が必要です (例: uuid = { version = "1.0", features = ["v4"] })
-    #[tokio::main]
-    #[test]
+    use std::path::PathBuf;
+
+    #[tokio::test] // #[tokio::main] と #[test] の組み合わせより、こちらが一般的です
     async fn update_test() -> Result<(), Error> {
         let test_sources_content = include_str!("../../../tests/apt/update/ubuntu.sources");
         let test_signature_content =
             include_bytes!("../../../tests/apt/update/ubuntu-archive-keyring.gpg");
 
-        // Create a unique temporary directory for this test
-        let temp_test_dir = std::env::temp_dir().join(format!("upm_test_{}", uuid::Uuid::new_v4()));
-        tokio::fs::create_dir_all(&temp_test_dir).await?;
+        // --- 修正箇所: プロジェクトルートの run ディレクトリを使用 ---
+        // manifest_dir (Cargo.tomlのある場所) から run/test_output_{uuid} を作成
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let test_run_dir = root
+            .join("run")
+            .join(format!("test_update_{}", uuid::Uuid::new_v4()));
+
+        tokio::fs::create_dir_all(&test_run_dir).await?;
+
         let result: Result<(), Error> = {
-            // Define temporary paths for source file, keyring, and cache directories within the test's temp dir
-            let temp_sources_file = temp_test_dir.join("ubuntu.sources");
-            let temp_keyring_dir = temp_test_dir.join("keyrings");
+            let temp_sources_file = test_run_dir.join("ubuntu.sources");
+            let temp_keyring_dir = test_run_dir.join("keyrings");
             let temp_keyring_file = temp_keyring_dir.join("ubuntu-archive-keyring.gpg");
-            let in_release_cache_dir_test = temp_test_dir.join("caches/lists/releases");
-            let packages_cache_dir_test = temp_test_dir.join("caches/lists/packages");
-            let package_list_dir_test = temp_test_dir.join("repo/packages");
+            let in_release_cache_dir_test = test_run_dir.join("caches/lists/releases");
+            let packages_cache_dir_test = test_run_dir.join("caches/lists/packages");
+            let package_list_dir_test = test_run_dir.join("repo/packages");
 
-            // Ensure keyring directory exists
             tokio::fs::create_dir_all(&temp_keyring_dir).await?;
-
-            // Write the temporary GPG key file
             tokio::fs::write(&temp_keyring_file, test_signature_content).await?;
 
-            // Dynamically replace the Signed-By path in test_sources_content
+            // 置き換え対象のパスが古い固定パスになっている場合、
+            // 新しい temp_keyring_file の絶対パスに置換します
             let modified_sources_content = test_sources_content
                 .replace(
                     "/tmp/union-package-manager/keyrings/ubuntu-archive-keyring.gpg",
                     temp_keyring_file.to_str().unwrap(),
                 )
-                // Fix typo in original test file content if present
                 .replace(
                     "/tmp/union-package-managerkeyrings/ubuntu-archive-keyring.gpg",
                     temp_keyring_file.to_str().unwrap(),
                 );
 
             tokio::fs::write(&temp_sources_file, modified_sources_content).await?;
+
             let entries = AptRepositoryEntry::load(&temp_sources_file)?;
             assert!(
                 !entries.is_empty(),
@@ -675,8 +746,11 @@ mod tests {
             .await?;
             Ok(())
         };
-        // Cleanup: Remove the temporary directory
-        tokio::fs::remove_dir_all(&temp_test_dir).await?;
+
+        // デバッグのためにあえて削除しない、あるいは成功時のみ削除するなどの運用が可能です。
+        // ファイル構成を確認したい場合は、以下の行をコメントアウトしてください。
+        // tokio::fs::remove_dir_all(&test_run_dir).await?;
+
         result?;
         Ok(())
     }

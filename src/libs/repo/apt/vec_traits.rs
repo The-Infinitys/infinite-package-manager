@@ -25,11 +25,7 @@ impl AptRepositoryEntryVec for Vec<AptRepositoryEntry> {
                     let url = format!("{}/dists/{}/InRelease", entry.uris, suite);
 
                     let mut packages_urls: Vec<String> = Vec::new();
-                    // Packages.xz, Packages.gz, Packages.bz2, Packages.lzma のURLを生成
                     packages_urls.extend(entry.target_urls(".xz"));
-                    packages_urls.extend(entry.target_urls(".gz"));
-                    packages_urls.extend(entry.target_urls(".bz2"));
-                    packages_urls.extend(entry.target_urls(".lzma"));
 
                     unique_targets.insert((url, signed_by_key.clone(), packages_urls)); // Store URL, key info and packages URLs
                 });

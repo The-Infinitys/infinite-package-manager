@@ -14,16 +14,24 @@ pub async fn parse_packages_file(url: &str) -> Result<Vec<DebPackageEntry>, Erro
         .unwrap_or(url)
         .to_string();
     let response = reqwest::get(url).await?.bytes().await?.to_vec();
+    parse_packages_file_from_bytes(&file_name, &response)
+}
+
+/// バイト列からパッケージファイルを解凍し、DebPackageEntryのリストをパースする
+pub fn parse_packages_file_from_bytes(
+    file_name: &str,
+    data: &[u8],
+) -> Result<Vec<DebPackageEntry>, Error> {
     let mut decompressed_data = Vec::new();
     let reader: Box<dyn Read> = if file_name.ends_with(".gz") {
-        Box::new(GzDecoder::new(response.as_slice()))
+        Box::new(GzDecoder::new(data))
     } else if file_name.ends_with(".xz") {
-        Box::new(XzDecoder::new(response.as_slice()))
+        Box::new(XzDecoder::new(data))
     } else if file_name.ends_with(".lzma") {
-        lzma_decompress(&mut response.as_slice(), &mut decompressed_data)?;
+        lzma_decompress(&mut data.as_ref(), &mut decompressed_data)?;
         Box::new(decompressed_data.as_slice())
     } else {
-        Box::new(response.as_slice())
+        Box::new(data)
     };
 
     let deb_info = Deb822::read(reader)?.paragraphs();
