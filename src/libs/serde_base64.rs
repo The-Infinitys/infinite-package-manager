@@ -1,6 +1,6 @@
 pub mod serde_base64 {
-    use base64::{engine::general_purpose, Engine as _};
-    use serde::{de, Deserializer, Serializer, Deserialize};
+    use base64::{Engine as _, engine::general_purpose};
+    use serde::{Deserialize, Deserializer, Serializer, de};
 
     pub fn serialize<S>(bytes: &[u8], serializer: S) -> Result<S::Ok, S::Error>
     where
